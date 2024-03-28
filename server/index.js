@@ -5,6 +5,7 @@ const { type } = require("os");
 const express = require("express");
 const app = express();
 const crypto = require("crypto");
+const { connected } = require("process");
 app.use(cors());
 const server = http.createServer(app);
 const io = new Server(server, {
@@ -13,37 +14,41 @@ const io = new Server(server, {
     methods: ["GET", "POST"],
   },
 });
-
+const room = {};
 const userInfo = {};
 app.get("/random", (req, res) => {
   res.send({ response: crypto.randomBytes(6).toString("hex") });
 });
+
 io.on("connection", (socket) => {
-  console.log("a user connected", socket.id);
-  socket.on("send-file", (data) => {
-    socket.join(data.id);
-    userInfo[data.id] = data.info;
-    console.log("file received", data);
+  socket.on("code", (data) => {
+    socket.join(data.code);
+    room[data.code] = [socket.id];
+    console.log("user code set", data.code);
   });
-  socket.on("ice-candidate", (data) => {
-    console.log("ice candidate", Object.keys(data));
-    socket.to(data.id).emit("ice-candidate", data);
-  });
-  socket.on("find-file", (data) => {
-    if (userInfo[data.id]) {
-      socket.join(data.id);
-      console.log("file found", userInfo[data.id] ,"at", data.id);
-      socket.emit("file-found", { info: userInfo[data.id] });
-      socket.to(data.id).emit("receiver-found",{id : data.id});
+  socket.on("startConnection", (data) => {
+    if (room[data.code] && room[data.code].length == 1) {
+      socket.join(data.code);
+      room[data.code].push(socket.id);
+      socket.to(data.code).emit("beginSDP",data);
     } else {
-      console.log("file not found");
+      socket.emit("invalidCode");
     }
   });
-  socket.on("disconnect", () => {
-    socket.leaveAll();
-    console.log("user disconnected");
+  socket.on("offer", (data) => {
+    console.log("offer received from", data.code);
+    socket.to(data.code).emit("offer", data);
+  });
+  socket.on("answer", (data) => {
+    console.log("answer received from", data.code);
+    socket.to(data.code).emit("answer", data);
+  });
+
+  socket.on("ice-candidate", (data) => {
+    socket.to(data.code).emit("ice-candidate", data);
   });
 });
+
 server.listen(3000, () => {
   console.log("listening on *:3000");
 });
