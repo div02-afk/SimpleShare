@@ -7,10 +7,13 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
-dist
-dist-ssr
+p2p-fileshare/node_modules
+p2p-fileshare/dist
+p2p-fileshare/dist-ssr
 *.local
+# Server dependencies
+server/node_modules
+server/.env
 
 # Editor directories and files
 .vscode/*
