@@ -1,54 +1,59 @@
-const http = require("http");
-const { Server } = require("socket.io");
-const cors = require("cors");
-const { type } = require("os");
-const express = require("express");
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const crypto = require('crypto');
+const cors = require('cors');
 const app = express();
-const crypto = require("crypto");
-const { connected } = require("process");
-app.use(cors());
-const server = http.createServer(app);
-const io = new Server(server, {
-  cors: {
-    origin: "*",
-    methods: ["GET", "POST"],
-  },
-});
-const room = {};
-const userInfo = {};
-app.get("/random", (req, res) => {
-  res.send({ response: crypto.randomBytes(6).toString("hex") });
-});
-
-io.on("connection", (socket) => {
-  socket.on("code", (data) => {
-    socket.join(data.code);
-    room[data.code] = [socket.id];
-    console.log("user code set", data.code);
-  });
-  socket.on("startConnection", (data) => {
-    if (room[data.code] && room[data.code].length == 1) {
-      socket.join(data.code);
-      room[data.code].push(socket.id);
-      socket.to(data.code).emit("beginSDP",data);
-    } else {
-      socket.emit("invalidCode");
+app.use(cors(
+    {
+        origin: '*',
+        methods: ['GET', 'POST']
     }
-  });
-  socket.on("offer", (data) => {
-    console.log("offer received from", data.code);
-    socket.to(data.code).emit("offer", data);
-  });
-  socket.on("answer", (data) => {
-    console.log("answer received from", data.code);
-    socket.to(data.code).emit("answer", data);
-  });
+));
+const server = http.createServer(app);
+const io = new Server(server,{
+    cors: {
+        origin: '*',
+    }
 
-  socket.on("ice-candidate", (data) => {
-    socket.to(data.code).emit("ice-candidate", data);
-  });
 });
+
+io.on('connection', (socket) => {
+    let userCount = io.engine.clientsCount;
+    console.log('a user connected',userCount);
+    socket.on('join-room', (room) => {
+        console.log('user joined room', room);
+        socket.join(room);
+        const roomSize = io.sockets.adapter.rooms.get(room)?.size || 1;
+        console.log('Number of users in room:', roomSize);
+        if (roomSize >= 2) {
+            socket.to(room).emit('room-full');
+        }
+    });
+    socket.on('offer', (data) => {
+        socket.to(data.room).emit('offer', data.offer);
+    });
+
+    socket.on('answer', (data) => {
+        socket.to(data.room).emit('answer', data);
+    });
+
+    socket.on('ice-candidate', (data) => {
+        // console.log('ice-candidate received',data.candidate);
+        socket.to(data.room).emit('ice-candidate', data.candidate);
+    });
+
+    socket.on('disconnect', () => {
+        console.log('user disconnected');
+    });
+});
+
+app.get('/random', (req, res) => {
+    const randomID = crypto.randomBytes(6).toString('hex');
+    res.send(randomID);
+});
+
 
 server.listen(3000, () => {
-  console.log("listening on *:3000");
+    console.log('listening on *:3000');
 });
