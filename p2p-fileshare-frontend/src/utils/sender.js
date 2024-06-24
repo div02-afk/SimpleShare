@@ -1,7 +1,7 @@
 import { io } from "socket.io-client";
 import Connection from "./Connectionclass.js";
 
-export default class Sender extends Connection{
+export default class Sender extends Connection {
   peerConnection = null;
   socket = null;
   offer = null;
@@ -17,12 +17,10 @@ export default class Sender extends Connection{
 
     this.dataChannel.onopen = () => {
       console.log("Data channel is open");
-      
     };
     this.peerConnection.ondatachannel = (event) => {
       console.log("Data channel received");
       this.dataChannel = event.channel;
-      this.dataChannel.send("Hello from sender");
     };
     this.dataChannel.onclose = () => console.log("Data channel is closed");
     this.dataChannel.onmessage = (event) =>
@@ -44,16 +42,14 @@ export default class Sender extends Connection{
       }
     };
     this.peerConnection.onicecandidate = (event) => {
-      console.log("ice candidate event, sending",event);
-      this.handleIceCandidate(event,'sender');
+      console.log("ice candidate event, sending", event);
+      this.handleIceCandidate(event, "sender");
     };
-    // this.peerConnection.onicecandidate = (event) => {
-    //   console.log("ice candidate event,sending");
-    //   if (event.candidate == null){
-        
-    //   }
-    //   this.handleIceCandidate(event,'sender');
-    // };
+
+    this.initiateSocketListeners();
+  }
+
+  initiateSocketListeners() {
     this.socket.on("answer", (answer) => {
       // console.log("answer received", answer);
       this.handleAnswer(answer.answer);
@@ -62,11 +58,12 @@ export default class Sender extends Connection{
       this.handleRoomFull();
     });
     this.socket.on("ice-candidate", (candidate) => {
-        console.log("ice candidate received",candidate);
-        
+      console.log("ice candidate received", candidate);
+
       this.peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
     });
   }
+
   async handleRoomFull() {
     this.offer = await this.createOffer();
   }
@@ -109,4 +106,11 @@ export default class Sender extends Connection{
     this.isUniqueIDSet = true;
   }
 
+  async sendFile(file) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      this.dataChannel.send(reader.result);
+    };
+    reader.readAsArrayBuffer(file);
+  }
 }

@@ -5,7 +5,7 @@ const googleServers = [{
 }]
 
 const peerConnection = new RTCPeerConnection({
-    iceServers: googleServers,
+    iceServers: servers,
     // turnServers: [
     //     {
     //         urls: "numb.viagenie.ca",

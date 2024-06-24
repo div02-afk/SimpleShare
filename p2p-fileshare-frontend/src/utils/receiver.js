@@ -1,42 +1,34 @@
 import { io } from "socket.io-client";
 import Connection from "./Connectionclass.js";
-export default class Receiver extends Connection{
+export default class Receiver extends Connection {
   peerConnection = null;
   socket = null;
   uniqueId = null;
   dataChannel = null;
-
+  metadata = null;
   constructor(peerConnection, uniqueId) {
-    super()
+    super();
     this.peerConnection = peerConnection;
     this.uniqueId = uniqueId;
     this.socket = io("http://localhost:3000");
     this.dataChannel = this.peerConnection.createDataChannel("myDataChannel");
     this.peerConnection.onsignalingstatechange = () => {
-      // console.log('Signaling state changed to:', this.peerConnection.signalingState);
+      console.log(
+        "Signaling state changed to:",
+        this.peerConnection.signalingState
+      );
     };
     this.peerConnection.onicecandidate = (event) => {
-      console.log("ice candidate event, sending",event);
-      this.handleIceCandidate(event,'receiver');
+      console.log("ice candidate event, sending", event);
+      this.handleIceCandidate(event, "receiver");
     };
-    this.socket.emit("join-room", this.uniqueId);
-    this.socket.on("offer", (offer) => {
-      //   console.log("offer received", offer);
-      this.handleOffer(offer);
-    });
-    this.socket.on("ice-candidate", (candidate) => {
-        console.log("ice candidate received",candidate);
-        
-        this.peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
-    });
+    this.initiateSocketListeners();
     this.dataChannel.onopen = () => console.log("Data channel is open");
     this.dataChannel.onclose = () => console.log("Data channel is closed");
-    this.dataChannel.onmessage = (event) =>
+    this.dataChannel.onmessage = (event) => {
       console.log("Received message:", event.data);
-    // this.peerConnection.onicecandidate = (event) => {
-    //   console.log("ice candidate event, sending",event);
-    //   this.handleIceCandidate(event,'receiver');
-    // };
+      this.receiveFile(event.data);
+    };
     this.peerConnection.oniceconnectionstatechange = () => {
       console.log(
         "ICE connection state:",
@@ -50,7 +42,21 @@ export default class Receiver extends Connection{
       }
     };
   }
+  initiateSocketListeners() {
+    this.socket.emit("join-room", this.uniqueId);
+    this.socket.on("offer", (offer) => {
+      this.handleOffer(offer);
+    });
+    this.socket.on("ice-candidate", (candidate) => {
+      console.log("ice candidate received", candidate);
 
+      this.peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+    });
+    this.socket.on("metadata", (metadata) => {
+      console.log("metadata received", metadata);
+      this.metadata = metadata;
+    });
+  }
   async handleOffer(offer) {
     await this.peerConnection.setRemoteDescription(
       new RTCSessionDescription(offer)
@@ -61,18 +67,18 @@ export default class Receiver extends Connection{
     this.sendToSocket("answer", { room: this.uniqueId, answer: answer });
   }
 
-//   async handleIceCandidate(event) {
-//     if (event.candidate) {
-//       this.peerConnection.addIceCandidate(event.candidate);
-//       this.sendToSocket("ice-candidate", {
-//         room: this.uniqueId,
-//         candidate: event,
-//         sender : 'receiver'
-//       });
-//     }
-//   }
-
   async sendToSocket(type, msg) {
     this.socket.emit(type, msg);
+  }
+  receiveFile(data) {
+    const receivedData = new Blob([data]);
+    const link = document.createElement("a");
+    const blobURL = URL.createObjectURL(receivedData);
+    link.href = blobURL;
+    link.download = this.metadata.name;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(blobURL);
   }
 }
