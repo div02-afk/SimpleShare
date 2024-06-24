@@ -12,7 +12,7 @@ export default class Sender extends Connection {
     super();
     this.peerConnection = peerConnection;
     this.uniqueId = this.getRandomIDandJoinRoom();
-    this.socket = io("http://localhost:3000");
+    this.socket = io("https://p2p-fileshare.onrender.com");
     this.dataChannel = this.peerConnection.createDataChannel("myDataChannel");
 
     this.dataChannel.onopen = () => {
@@ -99,7 +99,7 @@ export default class Sender extends Connection {
   }
 
   async getRandomIDandJoinRoom() {
-    const response = await fetch("http://localhost:3000/random");
+    const response = await fetch("https://p2p-fileshare.onrender.com/random");
     this.uniqueId = await response.text();
     console.log("unique id", this.uniqueId);
     this.sendToSocket("join-room", this.uniqueId);

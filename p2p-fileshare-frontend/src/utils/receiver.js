@@ -10,7 +10,7 @@ export default class Receiver extends Connection {
     super();
     this.peerConnection = peerConnection;
     this.uniqueId = uniqueId;
-    this.socket = io("http://localhost:3000");
+    this.socket = io("https://p2p-fileshare.onrender.com");
     this.dataChannel = this.peerConnection.createDataChannel("myDataChannel");
     this.peerConnection.onsignalingstatechange = () => {
       console.log(
