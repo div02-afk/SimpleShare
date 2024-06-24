@@ -42,7 +42,9 @@ io.on('connection', (socket) => {
         // console.log('ice-candidate received',data.candidate);
         socket.to(data.room).emit('ice-candidate', data.candidate);
     });
-
+    socket.on('metadata', (data) => {
+        socket.to(data.room).emit('metadata', data);
+    });
     socket.on('disconnect', () => {
         console.log('user disconnected');
     });
