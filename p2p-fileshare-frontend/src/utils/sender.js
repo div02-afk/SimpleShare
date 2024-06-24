@@ -117,6 +117,9 @@ export default class Sender extends Connection {
         data: fileParts[i],
        
       };
+      if(i > fileParts.length/2){
+        console.log("50% completed");
+      }
       this.dataChannel.send(dataToSend);
       setInterval(() => {
         if(this.partReceived){
