@@ -1,10 +1,10 @@
-import React, { useEffect, useState } from 'react';
-import {Sender} from './utils/connection';
-import peerConnection from './utils/peerConnectionSetup';
-
+import React, { useEffect, useState } from "react";
+import { Sender } from "./utils/connection";
+import peerConnection from "./utils/peerConnectionSetup";
+import splitFile from "./utils/fileSplitter";
 export default function Send() {
   const [connection, setConnection] = useState(null);
-  const [uniqueId, setUniqueId] = useState('');
+  const [uniqueId, setUniqueId] = useState("");
   const [file, setFile] = useState(null);
   useEffect(() => {
     const conn = new Sender(peerConnection);
@@ -27,26 +27,30 @@ export default function Send() {
   const handleFileChange = (event) => {
     setFile(event.target.files[0]);
   };
-  const handleSend  =() =>{
-    if(file){
+  const handleSend = async () => {
+    if (file) {
       const roomID = connection.getUniqueId();
       const metadata = {
-        room : roomID,
+        room: roomID,
         type: file.type,
         size: file.size,
         name: file.name,
-      }
-      connection.sendToSocket('metadata', metadata)
-      connection.sendFile(file);
+      };
+
+      
+      const parts =await splitFile(file);
+      
+      connection.sendToSocket("metadata", metadata);
+      connection.sendFile(parts);
     }
-  }
+  };
 
   return (
     <div className="send">
       <h1>Send</h1>
       <p>Welcome to the send page!</p>
       <p>{uniqueId}</p>
-      <input type="file" onChange={handleFileChange}/>
+      <input type="file" onChange={handleFileChange} />
       <button onClick={handleSend}>Send</button>
     </div>
   );

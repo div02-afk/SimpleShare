@@ -1,16 +1,18 @@
 import { io } from "socket.io-client";
 import Connection from "./Connectionclass.js";
+import serverAddress from "./serverLink.js";
 export default class Receiver extends Connection {
   peerConnection = null;
   socket = null;
   uniqueId = null;
   dataChannel = null;
   metadata = null;
+  fileParts = [];
   constructor(peerConnection, uniqueId) {
     super();
     this.peerConnection = peerConnection;
     this.uniqueId = uniqueId;
-    this.socket = io("https://p2p-fileshare.onrender.com");
+    this.socket = io(serverAddress);
     this.dataChannel = this.peerConnection.createDataChannel("myDataChannel");
     this.peerConnection.onsignalingstatechange = () => {
       console.log(
@@ -71,14 +73,21 @@ export default class Receiver extends Connection {
     this.socket.emit(type, msg);
   }
   receiveFile(data) {
-    const receivedData = new Blob([data]);
-    const link = document.createElement("a");
-    const blobURL = URL.createObjectURL(receivedData);
-    link.href = blobURL;
-    link.download = this.metadata.name;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(blobURL);
+    if (data === "EOF") {
+      console.log("File received");
+      const receivedData = new Blob(this.fileParts);
+      const link = document.createElement("a");
+      const blobURL = URL.createObjectURL(receivedData);
+      link.href = blobURL;
+      link.download = this.metadata.name;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(blobURL);
+    } else {
+      this.fileParts.push(data.data);
+      this.dataChannel.send("received");
+
+    }
   }
 }

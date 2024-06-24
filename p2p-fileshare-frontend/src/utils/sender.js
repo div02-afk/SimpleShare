@@ -1,6 +1,6 @@
 import { io } from "socket.io-client";
 import Connection from "./Connectionclass.js";
-
+import serverAddress from "./serverLink.js";
 export default class Sender extends Connection {
   peerConnection = null;
   socket = null;
@@ -8,11 +8,12 @@ export default class Sender extends Connection {
   uniqueId = null;
   isUniqueIDSet = false;
   dataChannel = null;
+  partReceived = false;
   constructor(peerConnection) {
     super();
     this.peerConnection = peerConnection;
     this.uniqueId = this.getRandomIDandJoinRoom();
-    this.socket = io("https://p2p-fileshare.onrender.com");
+    this.socket = io(serverAddress);
     this.dataChannel = this.peerConnection.createDataChannel("myDataChannel");
 
     this.dataChannel.onopen = () => {
@@ -25,6 +26,9 @@ export default class Sender extends Connection {
     this.dataChannel.onclose = () => console.log("Data channel is closed");
     this.dataChannel.onmessage = (event) =>
       console.log("Received message:", event.data);
+    if(event.data == "received"){
+      this.partReceived = true;
+    }
 
     // this.peerConnection.onsignalingstatechange = () => {
     //     console.log('Signaling state changed to:', this.peerConnection.signalingState);
@@ -99,18 +103,27 @@ export default class Sender extends Connection {
   }
 
   async getRandomIDandJoinRoom() {
-    const response = await fetch("https://p2p-fileshare.onrender.com/random");
+    const response = await fetch(serverAddress  + '/random');
     this.uniqueId = await response.text();
     console.log("unique id", this.uniqueId);
     this.sendToSocket("join-room", this.uniqueId);
     this.isUniqueIDSet = true;
   }
 
-  async sendFile(file) {
-    const reader = new FileReader();
-    reader.onload = () => {
-      this.dataChannel.send(reader.result);
-    };
-    reader.readAsArrayBuffer(file);
+  async sendFile(fileParts) {
+    for (let i=0;i<fileParts.length;i++) {
+      this.partReceived = false;
+      const dataToSend = {
+        data: fileParts[i],
+       
+      };
+      this.dataChannel.send(dataToSend);
+      setInterval(() => {
+        if(this.partReceived){
+          clearInterval();
+        }
+      }, 100);
+    }
+    this.dataChannel.send("EOF");
   }
 }
