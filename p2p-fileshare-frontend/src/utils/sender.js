@@ -25,16 +25,16 @@ export default class Sender extends Connection {
     this.peerConnection.ondatachannel = (event) => {
       console.log("Data channel received");
       this.dataChannel2 = event.channel;
-    };
-    this.dataChannel2.onopen = () => {
-      console.log("Data channel 2 is open");
-    }
-    this.dataChannel2.onmessage = (event) => {
-      console.log("Data channel 2 message received", event.data);
-      if (event.data == "received") {
-        this.partReceived = true;
+      this.dataChannel2.onopen = () => {
+        console.log("Data channel 2 is open");
       }
-    }
+      this.dataChannel2.onmessage = (event) => {
+        console.log("Data channel 2 message received", event.data);
+        if (event.data == "received") {
+          this.partReceived = true;
+        }
+      }
+    };
     this.dataChannel.onclose = () => console.log("Data channel is closed");
     this.dataChannel.onmessage = (event) => {
       console.log("Received message:", event.data);
