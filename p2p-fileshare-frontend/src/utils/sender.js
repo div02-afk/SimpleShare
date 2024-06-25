@@ -154,11 +154,12 @@ export default class Sender extends Connection {
               if (this.partReceived) {
                 console.log("Part received");
                 this.partReceived = false;
+                sendNextChunk();
                 clearInterval(intervalId);
               }
             }, 100);
             intervalId;
-            sendNextChunk();
+            
           } else {
             // Optionally send a signal that the blob has been fully sent
             this.dataChannel.send(JSON.stringify({ type: "done" }));
