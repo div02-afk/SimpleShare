@@ -55,12 +55,12 @@ export default class Receiver extends Connection {
         // Add the received chunk to the array
         this.receivedChunks.push(event.data);
         this.sizeReceived++;
+        this.dataChannel.send("received");
         if (this.receivedChunks.length == 1) {
           store.dispatch({ type: "RECEIVE" });
         }
         store.dispatch({ type: "SIZE_RECEIVED", payload: this.sizeReceived });
         this.receiving = true;
-        this.dataChannel.send("received");
       }
     };
     this.peerConnection.oniceconnectionstatechange = () => {
