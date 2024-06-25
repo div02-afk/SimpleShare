@@ -55,11 +55,13 @@ export default class Receiver extends Connection {
         // Add the received chunk to the array
         this.receivedChunks.push(event.data);
         this.sizeReceived++;
+        console.log("sending response")
         this.dataChannel.send("received");
+        console.log("response sent")
         if (this.receivedChunks.length == 1) {
           store.dispatch({ type: "RECEIVE" });
         }
-        store.dispatch({ type: "SIZE_RECEIVED", payload: this.sizeReceived });
+        store.dispatch({ type: "SIZE_RECEIVED", payload: this.sizeReceived * 16 });
         this.receiving = true;
       }
     };
