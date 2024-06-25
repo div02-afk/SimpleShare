@@ -165,7 +165,7 @@ export default class Sender extends Connection {
     const blob = new Blob([file]);
     const CHUNK_SIZE = 1024 * 128; // 128KB
     let offset = 0;
-    let count = 10;
+    let count = 20;
     let index=0;
     let dataChannelNumber = 0;
     const metadata = {
