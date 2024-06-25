@@ -163,7 +163,7 @@ export default class Sender extends Connection {
 
   sendFile(file) {
     const blob = new Blob([file]);
-    const CHUNK_SIZE = 1024 * 128; // 128KB
+    const CHUNK_SIZE = 1024 * 1024; // 128KB
     let offset = 0;
     let count = 10;
     let index=0;
