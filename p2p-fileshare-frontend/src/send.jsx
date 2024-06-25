@@ -32,19 +32,10 @@ export default function Send() {
   };
   const handleSend = async () => {
     if (file) {
-      const roomID = connection.getUniqueId();
-      const metadata = {
-        room: roomID,
-        type: file.type,
-        size: file.size,
-        name: file.name,
-      };
 
-      const fileBlob = new Blob([file]);
+
       
-      console.log(typeof file);
-      connection.sendToSocket("metadata", metadata);
-      connection.sendFile(fileBlob);
+      connection.sendFile(file);
     }
   };
 

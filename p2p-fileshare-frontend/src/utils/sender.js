@@ -10,6 +10,7 @@ export default class Sender extends Connection {
   uniqueId = null;
   isUniqueIDSet = false;
   dataChannel = null;
+  dataChannels = []
   dataChannel2 = null;
   partReceived = false;
   constructor(peerConnection) {
@@ -18,7 +19,8 @@ export default class Sender extends Connection {
     this.uniqueId = this.getRandomIDandJoinRoom();
     this.socket = io(serverAddress);
     this.dataChannel = this.peerConnection.createDataChannel("myDataChannel");
-    
+    this.createDataChannels(5);
+    // console.log(this.dataChannels);
     this.dataChannel.onopen = () => {
       console.log("Data channel is open");
     };
@@ -37,12 +39,13 @@ export default class Sender extends Connection {
     };
     this.dataChannel.onclose = () => console.log("Data channel is closed");
     this.dataChannel.onmessage = (event) => {
-      console.log("Received message:", event.data);
+      // console.log("Received message:", event.data);
       if (event.data == "received") {
         this.partReceived = true;
       }
     };
 
+    
     // this.peerConnection.onsignalingstatechange = () => {
     //     console.log('Signaling state changed to:', this.peerConnection.signalingState);
     // };
@@ -60,12 +63,25 @@ export default class Sender extends Connection {
       }
     };
     this.peerConnection.onicecandidate = (event) => {
-      console.log("ice candidate event, sending", event);
+      // console.log("ice candidate event, sending", event);
       this.handleIceCandidate(event, "sender");
     };
 
     this.initiateSocketListeners();
   }
+
+  createDataChannels(noOfDataChannels){
+    for (let i = 0; i < noOfDataChannels; i++) {
+      const dataChannel = this.peerConnection.createDataChannel("MultiDataChannel_" + i);
+      this.dataChannels.push(dataChannel);
+      dataChannel.onopen = () => {
+        console.log("Data channel is open");
+      };
+      dataChannel.onclose = () => console.log("Data channel is closed");
+      // console.log("Data channel created", dataChannel.label);
+    }
+  }
+
 
   initiateSocketListeners() {
     this.socket.on("answer", (answer) => {
@@ -76,7 +92,7 @@ export default class Sender extends Connection {
       this.handleRoomFull();
     });
     this.socket.on("ice-candidate", (candidate) => {
-      console.log("ice candidate received", candidate);
+      // console.log("ice candidate received", candidate);
 
       this.peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
     });
@@ -145,32 +161,53 @@ export default class Sender extends Connection {
   //   this.dataChannel.send(JSON.stringify({ data: "<this_is_the_end>" }));
   // }
 
-  sendFile(blob) {
-    const CHUNK_SIZE = 1024 * 128; // 16KB
+  sendFile(file) {
+    const blob = new Blob([file]);
+    const CHUNK_SIZE = 1024 * 128; // 128KB
     let offset = 0;
     let count = 10;
+    let index=0;
+    let dataChannelNumber = 0;
+    const metadata = {
+      room: this.uniqueId,
+      type: file.type,
+      size: file.size,
+      name: file.name,
+    };
+    this.sendToSocket("metadata", metadata);
+    console.log("Sending file of size", blob.size/1024, "KB");
     const sendNextChunk = () => {
       const slice = blob.slice(offset, offset + CHUNK_SIZE);
       const reader = new FileReader();
 
       reader.onload = (event) => {
         if (event.target.readyState === FileReader.DONE) {
+          dataChannelNumber = (dataChannelNumber + 1) % this.dataChannels.length;
           
-          this.dataChannel.send(event.target.result);
+          const arrayBuffer = this.arrayBufferToBase64( event.target.result);
+          const dataToSend = JSON.stringify({
+            type : "data",
+            data: arrayBuffer,
+            dataChannelNumber: dataChannelNumber,
+            index : index
+          });
+          this.dataChannels[dataChannelNumber].send(dataToSend);
+          // console.log("Sent part", index, "to data channel", dataChannelNumber);
+          index++;
           count--;
           offset += CHUNK_SIZE;
           if (offset < blob.size) {
             if (count==0){
               const intervalId = setInterval(() => {
                 if (this.partReceived) {
-                  console.log("Part received");
+                  // console.log("Part received");
                   this.partReceived = false;
                   count=10;
                   sendNextChunk();
                   clearInterval(intervalId);
                   
                 }
-              }, 100);
+              }, 10);
               intervalId;
 
             }
@@ -180,7 +217,8 @@ export default class Sender extends Connection {
             
           } else {
             // Optionally send a signal that the blob has been fully sent
-            this.dataChannel.send(JSON.stringify({ type: "done" }));
+            console.log("File sent");
+            this.dataChannel.send(JSON.stringify({ type: "the file sharing is completed" }));
           }
         }
       };
@@ -189,5 +227,6 @@ export default class Sender extends Connection {
     };
 
     sendNextChunk();
+    // this.dataChannel.send(JSON.stringify({ type: "done" }));
   }
 }
