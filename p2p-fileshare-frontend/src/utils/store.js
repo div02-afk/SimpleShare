@@ -4,6 +4,7 @@ import { produce } from "immer";
 const initialState = {
     isReceiving : false,
     sizeReceived : 0,
+    isConnected : false
 }
 
 const keyReducer = (state = initialState, action) => {
@@ -14,6 +15,9 @@ const keyReducer = (state = initialState, action) => {
                 break;
             case 'SIZE_RECEIVED':
                 draft.sizeReceived = action.payload;
+                break;
+            case 'CONNECT':
+                draft.isConnected = true;
                 break;
             default:
                 return state;

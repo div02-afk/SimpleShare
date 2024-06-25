@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from "react";
 import { Sender } from "./utils/connection";
 import peerConnection from "./utils/peerConnectionSetup";
-import splitFile from "./utils/fileSplitter";
+import store from "./utils/store";
 export default function Send() {
   const [connection, setConnection] = useState(null);
   const [uniqueId, setUniqueId] = useState("");
   const [file, setFile] = useState(null);
+  const [isConnected, setIsConnected] = useState(false);
   useEffect(() => {
     const conn = new Sender(peerConnection);
     setConnection(conn);
@@ -20,7 +21,9 @@ export default function Send() {
 
     checkUniqueId();
   }, []);
-
+  store.subscribe(() => {
+    setIsConnected(store.getState().key.isConnected);
+  })
   if (!connection || !uniqueId) {
     return <p>Waiting for uniqueId</p>;
   }
@@ -50,6 +53,7 @@ export default function Send() {
       <h1>Send</h1>
       <p>Welcome to the send page!</p>
       <p>{uniqueId}</p>
+      <p>{isConnected}</p>
       <input type="file" onChange={handleFileChange} />
       <button onClick={handleSend}>Send</button>
     </div>

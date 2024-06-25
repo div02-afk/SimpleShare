@@ -72,6 +72,7 @@ export default class Receiver extends Connection {
         this.peerConnection.iceConnectionState === "connected" ||
         this.peerConnection.iceConnectionState === "completed"
       ) {
+        store.dispatch({ type: "CONNECT" });
         console.log("Peer connection is established");
       }
     };

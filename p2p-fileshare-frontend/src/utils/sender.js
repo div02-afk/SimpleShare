@@ -2,6 +2,7 @@ import { io } from "socket.io-client";
 import Connection from "./Connectionclass.js";
 import serverAddress from "./serverLink.js";
 import splitFile from "./fileSplitter.js";
+import store from "./store.js";
 export default class Sender extends Connection {
   peerConnection = null;
   socket = null;
@@ -44,6 +45,7 @@ export default class Sender extends Connection {
         this.peerConnection.iceConnectionState === "connected" ||
         this.peerConnection.iceConnectionState === "completed"
       ) {
+        store.dispatch({ type: "CONNECT" });
         console.log("Peer connection is established");
       }
     };

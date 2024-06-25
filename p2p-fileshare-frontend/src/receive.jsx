@@ -9,12 +9,14 @@ export default function Send() {
     const [connection, setConnection] = useState(null);
     const [uniqueId, setUniqueId] = useState('');
     const [sizeReceived, setSizeReceived] = useState(0);
+    const [isConnected, setIsConnected] = useState(false);
     const connect = () => {
       const conn = new Receiver(peerConnection, uniqueId);
       setConnection(conn);
     }
     store.subscribe(()=>{
         setSizeReceived(store.getState().key.sizeReceived);
+        setIsConnected(store.getState().key.isConnected);
     })
 
     return (
@@ -25,7 +27,7 @@ export default function Send() {
         <button onClick={()=>{
             connect()
         } }>Receive</button>
-        {/* <p>{connection.receiving}</p> */}
+        <p> {isConnected}</p>
         <p>{sizeReceived} KB received </p>
         </div>
     );
