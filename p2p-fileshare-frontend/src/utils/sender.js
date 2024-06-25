@@ -174,6 +174,9 @@ export default class Sender extends Connection {
               intervalId;
 
             }
+            else{
+              sendNextChunk();
+            }
             
           } else {
             // Optionally send a signal that the blob has been fully sent
