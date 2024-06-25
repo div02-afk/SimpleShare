@@ -146,7 +146,7 @@ export default class Sender extends Connection {
   // }
 
   sendFile(blob) {
-    const CHUNK_SIZE = 1024 * 1024; // 16KB
+    const CHUNK_SIZE = 1024 * 128; // 16KB
     let offset = 0;
     let count = 10;
     const sendNextChunk = () => {
@@ -155,7 +155,7 @@ export default class Sender extends Connection {
 
       reader.onload = (event) => {
         if (event.target.readyState === FileReader.DONE) {
-
+          
           this.dataChannel.send(event.target.result);
           count--;
           offset += CHUNK_SIZE;
