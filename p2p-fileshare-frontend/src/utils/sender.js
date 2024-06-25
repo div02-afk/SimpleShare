@@ -148,7 +148,7 @@ export default class Sender extends Connection {
   sendFile(blob) {
     const CHUNK_SIZE = 16384*4; // 16KB
     let offset = 0;
-
+    let count = 10;
     const sendNextChunk = () => {
       const slice = blob.slice(offset, offset + CHUNK_SIZE);
       const reader = new FileReader();
@@ -157,18 +157,23 @@ export default class Sender extends Connection {
         if (event.target.readyState === FileReader.DONE) {
 
           this.dataChannel.send(event.target.result);
-
+          count--;
           offset += CHUNK_SIZE;
           if (offset < blob.size) {
-            const intervalId = setInterval(() => {
-              if (this.partReceived) {
-                console.log("Part received");
-                this.partReceived = false;
-                sendNextChunk();
-                clearInterval(intervalId);
-              }
-            }, 100);
-            intervalId;
+            if (count==0){
+              const intervalId = setInterval(() => {
+                if (this.partReceived) {
+                  console.log("Part received");
+                  this.partReceived = false;
+                  count=10;
+                  sendNextChunk();
+                  clearInterval(intervalId);
+                  
+                }
+              }, 100);
+              intervalId;
+
+            }
             
           } else {
             // Optionally send a signal that the blob has been fully sent
