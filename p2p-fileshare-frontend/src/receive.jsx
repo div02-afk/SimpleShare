@@ -27,7 +27,7 @@ export default function Send() {
         <button onClick={()=>{
             connect()
         } }>Receive</button>
-        <p> {isConnected}</p>
+        <p> {isConnected ? "connection successful" : "not connected"}</p>
         <p>{sizeReceived} KB received </p>
         </div>
     );

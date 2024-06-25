@@ -22,7 +22,7 @@ export default function Send() {
     checkUniqueId();
   }, []);
   store.subscribe(() => {
-    setIsConnected(store.getState().key.isConnected);
+    setIsConnected(store.getState().isConnected);
   })
   if (!connection || !uniqueId) {
     return <p>Waiting for uniqueId</p>;
@@ -51,9 +51,9 @@ export default function Send() {
   return (
     <div className="send">
       <h1>Send</h1>
+      <p>{isConnected ? "connection successful" : "not connected"}</p>
       <p>Welcome to the send page!</p>
       <p>{uniqueId}</p>
-      <p>{isConnected}</p>
       <input type="file" onChange={handleFileChange} />
       <button onClick={handleSend}>Send</button>
     </div>
