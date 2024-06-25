@@ -1,6 +1,6 @@
 import React, { useEffect,useState } from 'react';
 import {Receiver} from "./utils/connection";
-
+import store from './utils/store';
 import peerConnection from './utils/peerConnectionSetup';
 export default function Send() {
     
@@ -8,11 +8,14 @@ export default function Send() {
     
     const [connection, setConnection] = useState(null);
     const [uniqueId, setUniqueId] = useState('');
+    const [sizeReceived, setSizeReceived] = useState(0);
     const connect = () => {
       const conn = new Receiver(peerConnection, uniqueId);
       setConnection(conn);
     }
-    
+    store.subscribe(()=>{
+        setSizeReceived(store.getState().key.sizeReceived);
+    })
 
     return (
         <div className="receive">
@@ -22,6 +25,8 @@ export default function Send() {
         <button onClick={()=>{
             connect()
         } }>Receive</button>
+        {/* <p>{connection.receiving}</p> */}
+        <p>{sizeReceived} KB received </p>
         </div>
     );
 }

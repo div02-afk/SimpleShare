@@ -1,6 +1,7 @@
 import { io } from "socket.io-client";
 import Connection from "./Connectionclass.js";
 import serverAddress from "./serverLink.js";
+import splitFile from "./fileSplitter.js";
 export default class Sender extends Connection {
   peerConnection = null;
   socket = null;
@@ -24,11 +25,12 @@ export default class Sender extends Connection {
       this.dataChannel = event.channel;
     };
     this.dataChannel.onclose = () => console.log("Data channel is closed");
-    this.dataChannel.onmessage = (event) =>
+    this.dataChannel.onmessage = (event) => {
       console.log("Received message:", event.data);
-    if(event.data == "received"){
-      this.partReceived = true;
-    }
+      if (event.data == "received") {
+        this.partReceived = true;
+      }
+    };
 
     // this.peerConnection.onsignalingstatechange = () => {
     //     console.log('Signaling state changed to:', this.peerConnection.signalingState);
@@ -103,30 +105,63 @@ export default class Sender extends Connection {
   }
 
   async getRandomIDandJoinRoom() {
-    const response = await fetch(serverAddress  + '/random');
+    const response = await fetch(serverAddress + "/random");
     this.uniqueId = await response.text();
     console.log("unique id", this.uniqueId);
     this.sendToSocket("join-room", this.uniqueId);
     this.isUniqueIDSet = true;
   }
 
-  async sendFile(fileParts) {
-    for (let i=0;i<fileParts.length;i++) {
-      this.partReceived = false;
-      const dataToSend = {
-        data: fileParts[i],
-       
-      };
-      if(i > fileParts.length/2){
-        console.log("50% completed");
-      }
-      this.dataChannel.send(dataToSend);
-      setInterval(() => {
-        if(this.partReceived){
-          clearInterval();
+  // async sendFile(file) {
+  //   const fileParts = await splitFile(file);
+  //   for (let i = 0; i < fileParts.length; i++) {
+  //     this.partReceived = false;
+  //     const dataToSend = JSON.stringify({
+  //       data: fileParts[i],
+  //     });
+  //     if (i == fileParts.length / 2) {
+  //       console.log("50% completed");
+  //     }
+  //     this.dataChannel.send(dataToSend);
+  //     setInterval(() => {
+  //       if (this.partReceived) {
+  //         clearInterval();
+  //       }
+  //     }, 100);
+  //   }
+  //   console.log("File sent");
+  //   this.dataChannel.send(JSON.stringify({ data: "<this_is_the_end>" }));
+  // }
+
+  sendFile( blob) {
+    const CHUNK_SIZE = 16384; // 16KB
+    let offset = 0;
+
+    const sendNextChunk = ()=> {
+      const slice = blob.slice(offset, offset + CHUNK_SIZE);
+      const reader = new FileReader();
+
+      reader.onload = (event) => {
+        if (event.target.readyState === FileReader.DONE) {
+          this.dataChannel.send(event.target.result);
+          setInterval(() => {
+            if (this.partReceived) {
+              clearInterval();
+            }
+          }, 100);
+          offset += CHUNK_SIZE;
+          if (offset < blob.size) {
+            sendNextChunk();
+          } else {
+            // Optionally send a signal that the blob has been fully sent
+            this.dataChannel.send(JSON.stringify({ type: "done" }));
+          }
         }
-      }, 100);
+      };
+
+      reader.readAsArrayBuffer(slice);
     }
-    this.dataChannel.send("EOF");
+
+    sendNextChunk();
   }
 }

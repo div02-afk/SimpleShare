@@ -1,6 +1,7 @@
 import { io } from "socket.io-client";
 import Connection from "./Connectionclass.js";
 import serverAddress from "./serverLink.js";
+import store from "./store.js";
 export default class Receiver extends Connection {
   peerConnection = null;
   socket = null;
@@ -8,6 +9,10 @@ export default class Receiver extends Connection {
   dataChannel = null;
   metadata = null;
   fileParts = [];
+  receivedChunks = [];
+  receiving = false;
+  sizeReceived = 0;
+  temp = false;
   constructor(peerConnection, uniqueId) {
     super();
     this.peerConnection = peerConnection;
@@ -28,8 +33,35 @@ export default class Receiver extends Connection {
     this.dataChannel.onopen = () => console.log("Data channel is open");
     this.dataChannel.onclose = () => console.log("Data channel is closed");
     this.dataChannel.onmessage = (event) => {
-      console.log("Received message:", event.data);
-      this.receiveFile(event.data);
+      if (typeof event.data === "string") {
+        const message = JSON.parse(event.data);
+        if (message.type === "done") {
+          // All chunks received, assemble them into a single Blob
+          const receivedBlob = new Blob(this.receivedChunks);
+          console.log("Blob received:", receivedBlob);
+
+          // Reset for the next blob
+          this.receivedChunks = [];
+          this.receiving = false;
+
+          // Create a URL for the Blob and use it in an HTML element
+          const url = URL.createObjectURL(receivedBlob);
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = this.metadata.name; // Change the filename if needed
+          link.click();
+        }
+      } else if (event.data instanceof ArrayBuffer) {
+        // Add the received chunk to the array
+        this.receivedChunks.push(event.data);
+        this.sizeReceived++;
+        if (this.receivedChunks.length == 1) {
+          store.dispatch({ type: "RECEIVE" });
+        }
+        store.dispatch({ type: "SIZE_RECEIVED", payload: this.sizeReceived });
+        this.receiving = true;
+        this.dataChannel.send("received");
+      }
     };
     this.peerConnection.oniceconnectionstatechange = () => {
       console.log(
@@ -73,9 +105,15 @@ export default class Receiver extends Connection {
     this.socket.emit(type, msg);
   }
   receiveFile(data) {
-    if (data === "EOF") {
-      console.log("File received");
+    if (data === "<this_is_the_end>") {
+      console.log(
+        `File received. Downloading...${
+          this.fileParts.length
+        } MB, with type ${typeof this.fileParts[0]}`
+      );
+
       const receivedData = new Blob(this.fileParts);
+
       const link = document.createElement("a");
       const blobURL = URL.createObjectURL(receivedData);
       link.href = blobURL;
@@ -85,9 +123,9 @@ export default class Receiver extends Connection {
       document.body.removeChild(link);
       URL.revokeObjectURL(blobURL);
     } else {
-      this.fileParts.push(data.data);
+      console.log("Received data", data.length, typeof data);
+      this.fileParts.push(data);
       this.dataChannel.send("received");
-
     }
   }
 }

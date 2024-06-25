@@ -9,7 +9,7 @@ const readFileChunk = (file, start, end) => {
 };
 
 const splitFile = async (file) => {
-  const partSize = 1024 * 1024; // 1 MB per part
+  const partSize = 512 * 1024; // 512 KB per part
   const totalParts = Math.ceil(file.size / partSize);
   const parts = [];
   for (let i = 0; i < totalParts; i++) {

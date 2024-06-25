@@ -37,11 +37,11 @@ export default function Send() {
         name: file.name,
       };
 
+      const fileBlob = new Blob([file]);
       
-      const parts =await splitFile(file);
-      
+      console.log(typeof file);
       connection.sendToSocket("metadata", metadata);
-      connection.sendFile(parts);
+      connection.sendFile(fileBlob);
     }
   };
 
