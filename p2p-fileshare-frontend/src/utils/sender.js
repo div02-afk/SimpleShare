@@ -19,7 +19,7 @@ export default class Sender extends Connection {
     this.uniqueId = this.getRandomIDandJoinRoom();
     this.socket = io(serverAddress);
     this.dataChannel = this.peerConnection.createDataChannel("myDataChannel");
-    this.createDataChannels(5);
+    this.createDataChannels(10);
     // console.log(this.dataChannels);
     this.dataChannel.onopen = () => {
       console.log("Data channel is open");
