@@ -7,6 +7,7 @@ export default class Receiver extends Connection {
   socket = null;
   uniqueId = null;
   dataChannel = null;
+  dataChannel2 = null;
   metadata = null;
   fileParts = [];
   receivedChunks = [];
