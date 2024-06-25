@@ -19,7 +19,7 @@ export default class Receiver extends Connection {
     this.peerConnection = peerConnection;
     this.uniqueId = uniqueId;
     this.socket = io(serverAddress);
-    this.dataChannel = this.peerConnection.createDataChannel("myDataChannel");
+    this.dataChannel2 = this.peerConnection.createDataChannel("myDataChannel2");
     this.peerConnection.onsignalingstatechange = () => {
       console.log(
         "Signaling state changed to:",
@@ -31,41 +31,49 @@ export default class Receiver extends Connection {
       this.handleIceCandidate(event, "receiver");
     };
     this.initiateSocketListeners();
-    this.dataChannel.onopen = () => console.log("Data channel is open");
-    this.dataChannel.onclose = () => console.log("Data channel is closed");
-    this.dataChannel.onmessage = (event) => {
-      if (typeof event.data === "string") {
-        const message = JSON.parse(event.data);
-        if (message.type === "done") {
-          // All chunks received, assemble them into a single Blob
-          const receivedBlob = new Blob(this.receivedChunks);
-          console.log("Blob received:", receivedBlob);
+    this.peerConnection.ondatachannel = (event) => {
+      this.dataChannel = event.channel;
 
-          // Reset for the next blob
-          this.receivedChunks = [];
-          this.receiving = false;
+      this.dataChannel.onopen = () => console.log("Data channel is open");
+      this.dataChannel.onclose = () => console.log("Data channel is closed");
+      this.dataChannel.onmessage = (event) => {
+        if (typeof event.data === "string") {
+          const message = JSON.parse(event.data);
+          if (message.type === "done") {
+            // All chunks received, assemble them into a single Blob
+            const receivedBlob = new Blob(this.receivedChunks);
+            console.log("Blob received:", receivedBlob);
 
-          // Create a URL for the Blob and use it in an HTML element
-          const url = URL.createObjectURL(receivedBlob);
-          const link = document.createElement("a");
-          link.href = url;
-          link.download = this.metadata.name; // Change the filename if needed
-          link.click();
+            // Reset for the next blob
+            this.receivedChunks = [];
+            this.receiving = false;
+
+            // Create a URL for the Blob and use it in an HTML element
+            const url = URL.createObjectURL(receivedBlob);
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = this.metadata.name; // Change the filename if needed
+            link.click();
+          }
+        } else if (event.data instanceof ArrayBuffer) {
+          // Add the received chunk to the array
+          this.receivedChunks.push(event.data);
+          this.sizeReceived++;
+          console.log("sending response");
+          this.dataChannel2.send("received");
+          console.log("response sent");
+          if (this.receivedChunks.length == 1) {
+            store.dispatch({ type: "RECEIVE" });
+          }
+          store.dispatch({
+            type: "SIZE_RECEIVED",
+            payload: this.sizeReceived * 16,
+          });
+          this.receiving = true;
         }
-      } else if (event.data instanceof ArrayBuffer) {
-        // Add the received chunk to the array
-        this.receivedChunks.push(event.data);
-        this.sizeReceived++;
-        console.log("sending response")
-        this.dataChannel.send("received");
-        console.log("response sent")
-        if (this.receivedChunks.length == 1) {
-          store.dispatch({ type: "RECEIVE" });
-        }
-        store.dispatch({ type: "SIZE_RECEIVED", payload: this.sizeReceived * 16 });
-        this.receiving = true;
-      }
+      };
     };
+
     this.peerConnection.oniceconnectionstatechange = () => {
       console.log(
         "ICE connection state:",
