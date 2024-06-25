@@ -145,6 +145,7 @@ export default class Sender extends Connection {
 
       reader.onload = (event) => {
         if (event.target.readyState === FileReader.DONE) {
+
           this.dataChannel.send(event.target.result);
 
           offset += CHUNK_SIZE;
@@ -156,6 +157,7 @@ export default class Sender extends Connection {
                 clearInterval(intervalId);
               }
             }, 100);
+            intervalId;
             sendNextChunk();
           } else {
             // Optionally send a signal that the blob has been fully sent
