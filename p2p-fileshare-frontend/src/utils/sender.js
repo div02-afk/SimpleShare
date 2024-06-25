@@ -148,6 +148,7 @@ export default class Sender extends Connection {
           this.dataChannel.send(event.target.result);
           setInterval(() => {
             if (this.partReceived) {
+              this.partReceived = false;
               clearInterval();
             }
           }, 100);
