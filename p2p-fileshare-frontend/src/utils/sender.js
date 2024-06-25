@@ -146,7 +146,7 @@ export default class Sender extends Connection {
   // }
 
   sendFile(blob) {
-    const CHUNK_SIZE = 16384; // 16KB
+    const CHUNK_SIZE = 16384*4; // 16KB
     let offset = 0;
 
     const sendNextChunk = () => {

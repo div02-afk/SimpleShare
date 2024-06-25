@@ -60,7 +60,9 @@ export default class Receiver extends Connection {
           this.receivedChunks.push(event.data);
           this.sizeReceived++;
           console.log("sending response");
-          this.dataChannel2.send("received");
+          if (this.receivedChunks.length % 10 == 0) {
+            this.dataChannel2.send("received");
+          }
           console.log("response sent");
           if (this.receivedChunks.length == 1) {
             store.dispatch({ type: "RECEIVE" });
