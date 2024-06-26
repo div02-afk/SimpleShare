@@ -98,6 +98,7 @@ export default class Receiver extends Connection {
     });
   }
   async handleOffer(data) {
+    console.log(data)
     const connectionId = data.connectionId;
     const offer = data.offer;
     console.log("offer received for", connectionId);
