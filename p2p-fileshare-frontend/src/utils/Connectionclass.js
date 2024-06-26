@@ -1,19 +1,30 @@
-// import peerConnection from "./peerConnectionSetup";
+import peerConnectionInfo from "./peerConnectionSetup";
 
 export default class Connection{
     // peerConnection =peerConnection
     constructor(){
        
     }
-    async handleIceCandidate(event,sender) {
+    async handleIceCandidate(event,sender,i) {
       if (event.candidate) {
         // this.peerConnection.addIceCandidate(event.candidate);
         this.sendToSocket("ice-candidate", {
           room: this.uniqueId,
           candidate: event.candidate,
-          "sender" : sender
+          "sender" : sender,
+          "connectionId": i
         });
       }
+    }
+    createPeerConnections(numberOfPeerConnections){
+      const peerConnections = []
+      for (let i = 0; i < numberOfPeerConnections; i++) {
+        // const singlePeerConnection = peerConnection;
+        peerConnections.push(new RTCPeerConnection(peerConnectionInfo));
+        
+      }
+      console.log(peerConnections)
+      return peerConnections;
     }
     async sendToSocket(type, msg) {
       this.socket.emit(type, msg);

@@ -10,54 +10,85 @@ export default class Receiver extends Connection {
   dataChannel = null;
   dataChannel2 = null;
   metadata = null;
+  peerConnections = [];
   fileParts = [];
   receivedChunks = [];
   receiving = false;
   sizeReceived = 0;
   temp = false;
-  constructor(peerConnection, uniqueId) {
+  noOfPeerConnections = 0;
+  constructor(uniqueId) {
     super();
-    this.peerConnection = peerConnection;
+    this.noOfPeerConnections = 5;
+    this.peerConnections = this.createPeerConnections(this.noOfPeerConnections);
+    console.log(this.peerConnections);
     this.uniqueId = uniqueId;
     this.socket = io(serverAddress);
-    this.dataChannel2 = this.peerConnection.createDataChannel("myDataChannel2");
-    this.dataChannelHandler();
+    // this.dataChannel2 = this.peerConnection.createDataChannel("myDataChannel2");
+    // this.dataChannelHandler();
 
-    this.peerConnection.onsignalingstatechange = () => {
-      // console.log(
-      //   "Signaling state changed to:",
-      //   this.peerConnection.signalingState
-      // );
-    };
-    this.peerConnection.onicecandidate = (event) => {
-      // console.log("ice candidate event, sending", event);
-      this.handleIceCandidate(event, "receiver");
-    };
+    // this.peerConnection.onsignalingstatechange = () => {
+    //   // console.log(
+    //   //   "Signaling state changed to:",
+    //   //   this.peerConnection.signalingState
+    //   // );
+    // };
+    // this.peerConnection.onicecandidate = (event) => {
+    //   // console.log("ice candidate event, sending", event);
+    //   this.handleIceCandidate(event, "receiver");
+    // };
     this.initiateSocketListeners();
-
-    this.peerConnection.oniceconnectionstatechange = () => {
-      console.log(
-        "ICE connection state:",
-        this.peerConnection.iceConnectionState
-      );
-      if (
-        this.peerConnection.iceConnectionState === "connected" ||
-        this.peerConnection.iceConnectionState === "completed"
-      ) {
-        store.dispatch({ type: "CONNECT" });
-        console.log("Peer connection is established");
-      }
-    };
+    this.initiatePeerConnectionListners();
+    //   this.peerConnection.oniceconnectionstatechange = () => {
+    //     console.log(
+    //       "ICE connection state:",
+    //       this.peerConnection.iceConnectionState
+    //     );
+    //     if (
+    //       this.peerConnection.iceConnectionState === "connected" ||
+    //       this.peerConnection.iceConnectionState === "completed"
+    //     ) {
+    //       store.dispatch({ type: "CONNECT" });
+    //       console.log("Peer connection is established");
+    //     }
+    //   };
   }
+
+  initiatePeerConnectionListners() {
+    for (let i = 0; i < this.peerConnections.length; i++) {
+      this.dataChannelHandler(i);
+      this.peerConnections[i].onicecandidate = (event) => {
+        this.handleIceCandidate(event, "receiver", i);
+      };
+      this.peerConnections[i].oniceconnectionstatechange = () => {
+        console.log(
+          `ICE connection state for ${i}:`,
+          this.peerConnections[i].iceConnectionState
+        );
+        if (
+          this.peerConnections[i].iceConnectionState === "connected" ||
+          this.peerConnections[i].iceConnectionState === "completed"
+        ) {
+          store.dispatch({ type: "CONNECT" });
+          console.log(`Peer connection ${i} is established`);
+        }
+      };
+      
+    }
+  }
+
   initiateSocketListeners() {
     this.socket.emit("join-room", this.uniqueId);
-    this.socket.on("offer", (offer) => {
-      this.handleOffer(offer);
+    this.socket.on("offer", (data) => {
+      this.handleOffer(data);
     });
-    this.socket.on("ice-candidate", (candidate) => {
+    this.socket.on("ice-candidate", (data) => {
       // console.log("ice candidate received", candidate);
-
-      this.peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+      const candidate = data.candidate;
+      const connectionId = data.connectionId;
+      this.peerConnections[connectionId].addIceCandidate(
+        new RTCIceCandidate(candidate)
+      );
     });
     this.socket.on("metadata", (metadata) => {
       // console.log("metadata received", metadata);
@@ -66,14 +97,21 @@ export default class Receiver extends Connection {
       // this.receivedChunks = Array(MAth.max(Math.round(1+metadata.size / (1024 * 128))),1).fill(null);
     });
   }
-  async handleOffer(offer) {
-    await this.peerConnection.setRemoteDescription(
+  async handleOffer(data) {
+    const connectionId = data.connectionId;
+    const offer = data.offer;
+    console.log("offer received for", connectionId);
+    await this.peerConnections[connectionId].setRemoteDescription(
       new RTCSessionDescription(offer)
     );
-    const answer = await this.peerConnection.createAnswer();
-    await this.peerConnection.setLocalDescription(answer);
+    const answer = await this.peerConnections[connectionId].createAnswer();
+    await this.peerConnections[connectionId].setLocalDescription(answer);
     // console.log("signalling state after answer generation", this.peerConnection.signalingState);
-    this.sendToSocket("answer", { room: this.uniqueId, answer: answer });
+    this.sendToSocket("answer", {
+      room: this.uniqueId,
+      answer: answer,
+      connectionId: connectionId,
+    });
   }
 
   async sendToSocket(type, msg) {
@@ -104,14 +142,19 @@ export default class Receiver extends Connection {
   //   }
   // }
 
-  dataChannelHandler() {
-    this.peerConnection.ondatachannel = (event) => {
+  dataChannelHandler(connectionId) {
+    console.log(
+      "data handling for :",
+      connectionId,
+      this.peerConnections[connectionId]
+    );
+    this.peerConnections[connectionId].ondatachannel = (event) => {
       this.dataChannel = event.channel;
       // console.log("Data channel received", this.dataChannel.label);
-      this.dataChannel.onopen = () => console.log("Data channel is open");
+      this.dataChannel.onopen = () => console.log("Data channel is open for",connectionId);
       this.dataChannel.onclose = () => console.log("Data channel is closed");
       this.dataChannel.onmessage = (event) => {
-        // console.log("Data channel received message",typeof event.data);
+        // console.log("Data channel received message");
         if (typeof event.data === "string") {
           const message = JSON.parse(event.data);
           // console.log("Message received in valid format",message.index,message.type);
@@ -134,7 +177,7 @@ export default class Receiver extends Connection {
             URL.revokeObjectURL(url);
             // document.body.removeChild(link);
           } else if (message.type === "data") {
-            // console.log("Received chunk", message.index);
+            console.log("Received chunk", message.index);
             message.data = this.base64ToArrayBuffer(message.data);
             // Add the received chunk to the array
             // console.log("Received chunk", message.index);
@@ -146,7 +189,7 @@ export default class Receiver extends Connection {
             // console.log("Size received", this.sizeReceived);
             if (this.sizeReceived % 9 == 0) {
               // console.log("sending response", this.sizeReceived);
-            this.dataChannel2.send("received");
+              this.dataChannel2.send("received");
               // console.log("response sent");
             }
             if (this.receivedChunks.length == 1) {

@@ -31,7 +31,7 @@ io.on('connection', (socket) => {
         }
     });
     socket.on('offer', (data) => {
-        socket.to(data.room).emit('offer', data.offer);
+        socket.to(data.room).emit('offer', data);
     });
 
     socket.on('answer', (data) => {
@@ -40,7 +40,7 @@ io.on('connection', (socket) => {
 
     socket.on('ice-candidate', (data) => {
         // console.log('ice-candidate received',data.candidate);
-        socket.to(data.room).emit('ice-candidate', data.candidate);
+        socket.to(data.room).emit('ice-candidate', data);
     });
     socket.on('metadata', (data) => {
         socket.to(data.room).emit('metadata', data);

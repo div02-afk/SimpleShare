@@ -8,7 +8,7 @@ export default function Send() {
   const [sizeReceived, setSizeReceived] = useState(0);
   const [isConnected, setIsConnected] = useState(false);
   const connect = () => {
-    const conn = new Receiver(peerConnection, uniqueId);
+    const conn = new Receiver( uniqueId);
     setConnection(conn);
   };
   store.subscribe(() => {

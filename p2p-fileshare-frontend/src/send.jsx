@@ -8,7 +8,7 @@ export default function Send() {
   const [file, setFile] = useState(null);
   const [isConnected, setIsConnected] = useState(false);
   useEffect(() => {
-    const conn = new Sender(peerConnection);
+    const conn = new Sender();
     setConnection(conn);
 
     const checkUniqueId = () => {

@@ -6,129 +6,160 @@ import store from "./store.js";
 export default class Sender extends Connection {
   peerConnection = null;
   socket = null;
-  offer = null;
+  offers = [];
   uniqueId = null;
   isUniqueIDSet = false;
   dataChannel = null;
-  dataChannels = []
+  dataChannels = [];
+  peerConnections = [];
   dataChannel2 = null;
   partReceived = false;
-  constructor(peerConnection) {
+  noOfPeerConnections = 0;
+  constructor() {
     super();
-    this.peerConnection = peerConnection;
+    this.noOfPeerConnections = 5;
+    this.peerConnections = this.createPeerConnections(this.noOfPeerConnections);
     this.uniqueId = this.getRandomIDandJoinRoom();
     this.socket = io(serverAddress);
-    this.dataChannel = this.peerConnection.createDataChannel("myDataChannel");
-    this.createDataChannels(15);
-    // console.log(this.dataChannels);
-    this.dataChannel.onopen = () => {
-      console.log("Data channel is open");
-    };
-    this.peerConnection.ondatachannel = (event) => {
-      console.log("Data channel received");
-      this.dataChannel2 = event.channel;
-      this.dataChannel2.onopen = () => {
-        console.log("Data channel 2 is open");
-      }
-      this.dataChannel2.onmessage = (event) => {
-        console.log("Data channel 2 message received", event.data);
-        if (event.data == "received") {
-          this.partReceived = true;
-        }
-      }
-    };
-    this.dataChannel.onclose = () => console.log("Data channel is closed");
-    this.dataChannel.onmessage = (event) => {
-      // console.log("Received message:", event.data);
-      if (event.data == "received") {
-        this.partReceived = true;
-      }
-    };
-
     
+    for (let i = 0; i < this.noOfPeerConnections; i++) {
+      this.dataChannels[i] = []
+      this.createDataChannels(10, i);
+    }
+    // this.dataChannel = this.peerConnection.createDataChannel("myDataChannel");
+    // // console.log(this.dataChannels);
+    // this.dataChannel.onopen = () => {
+    //   console.log("Data channel is open");
+    // };
+    // this.peerConnection.ondatachannel = (event) => {
+    //   console.log("Data channel received");
+    //   this.dataChannel2 = event.channel;
+    //   this.dataChannel2.onopen = () => {
+    //     console.log("Data channel 2 is open");
+    //   };
+    //   this.dataChannel2.onmessage = (event) => {
+    //     console.log("Data channel 2 message received", event.data);
+    //     if (event.data == "received") {
+    //       this.partReceived = true;
+    //     }
+    //   };
+    // };
+    // this.dataChannel.onclose = () => console.log("Data channel is closed");
+    // this.dataChannel.onmessage = (event) => {
+    //   // console.log("Received message:", event.data);
+    //   if (event.data == "received") {
+    //     this.partReceived = true;
+    //   }
+    // };
+
     // this.peerConnection.onsignalingstatechange = () => {
     //     console.log('Signaling state changed to:', this.peerConnection.signalingState);
     // };
-    this.peerConnection.oniceconnectionstatechange = () => {
-      console.log(
-        "ICE connection state:",
-        this.peerConnection.iceConnectionState
-      );
-      if (
-        this.peerConnection.iceConnectionState === "connected" ||
-        this.peerConnection.iceConnectionState === "completed"
-      ) {
-        store.dispatch({ type: "CONNECT" });
-        console.log("Peer connection is established");
-      }
-    };
-    this.peerConnection.onicecandidate = (event) => {
-      // console.log("ice candidate event, sending", event);
-      this.handleIceCandidate(event, "sender");
-    };
 
+    // this.peerConnection.onicecandidate = (event) => {
+    //   // console.log("ice candidate event, sending", event);
+    //   this.handleIceCandidate(event, "sender");
+    // };
+    this.initiatePeerConnectionListners();
     this.initiateSocketListeners();
   }
-
-  createDataChannels(noOfDataChannels){
+  initiatePeerConnectionListners() {
+    for (let i = 0; i < this.peerConnections.length; i++) {
+      this.peerConnections[i].onicecandidate = (event) => {
+        this.handleIceCandidate(event, "sender", i);
+      };
+      this.peerConnections[i].oniceconnectionstatechange = () => {
+        console.log(
+          `ICE connection state for ${i}:`,
+          this.peerConnections[i].iceConnectionState
+        );
+        if (
+          this.peerConnections[i].iceConnectionState === "connected" ||
+          this.peerConnections[i].iceConnectionState === "completed"
+        ) {
+          store.dispatch({ type: "CONNECT" });
+          console.log(`Peer connection ${i} is established`);
+        }
+      };
+    }
+  }
+  createDataChannels(noOfDataChannels, connectionId) {
+   
     for (let i = 0; i < noOfDataChannels; i++) {
-      const dataChannel = this.peerConnection.createDataChannel("MultiDataChannel_" + i);
-      this.dataChannels.push(dataChannel);
+      const dataChannel = this.peerConnections[connectionId].createDataChannel(
+        "MultiDataChannel_" + connectionId + "_" + i 
+      );
+      
+      this.dataChannels[connectionId].push(dataChannel);
       dataChannel.onopen = () => {
         console.log("Data channel is open");
       };
       dataChannel.onclose = () => console.log("Data channel is closed");
       // console.log("Data channel created", dataChannel.label);
     }
+    // console.log("data channnels created for",connectionId,"with length",this.dataChannels[connectionId].length)
+    console.log(this.dataChannels[connectionId][0])
   }
 
-
   initiateSocketListeners() {
-    this.socket.on("answer", (answer) => {
-      // console.log("answer received", answer);
-      this.handleAnswer(answer.answer);
+    this.socket.on("answer", (data) => {
+      console.log("answer received for",data.connectionId);
+      this.handleAnswer(data);
     });
     this.socket.on("room-full", () => {
       this.handleRoomFull();
     });
-    this.socket.on("ice-candidate", (candidate) => {
-      // console.log("ice candidate received", candidate);
-
-      this.peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+    this.socket.on("ice-candidate", (data) => {
+      console.log("ice candidate received for", data.connectionId);
+      const candidate = data.candidate;
+      const connectionId = data.connectionId;
+      this.peerConnections[connectionId].addIceCandidate(
+        new RTCIceCandidate(candidate)
+      );
     });
   }
 
   async handleRoomFull() {
-    this.offer = await this.createOffer();
+    // this.offer = await this.createOffer();
+    for (let i = 0; i < this.peerConnections.length; i++) {
+      this.offers.push(await this.createOffer(i));
+    }
   }
 
-  async handleAnswer(answer) {
+  async handleAnswer(data) {
     // console.log("answer received");
     // console.log("peer connection state", this.peerConnection.signalingState);
-
+    const connectionId = data.connectionId;
+    const answer = data.answer;
     if (
-      this.peerConnection.signalingState === "have-local-offer" ||
-      this.peerConnection.signalingState === "have-remote-offer"
+      this.peerConnections[connectionId].signalingState ===
+        "have-local-offer" ||
+      this.peerConnections[connectionId].signalingState === "have-remote-offer"
     ) {
-      await this.peerConnection.setRemoteDescription(
+      await this.peerConnections[connectionId].setRemoteDescription(
         new RTCSessionDescription(answer)
       );
-      console.log(this.peerConnection.iceConnectionState);
+      console.log(this.peerConnections[connectionId].iceConnectionState);
     } else {
       console.error(
         "Peer connection not in correct state to set remote description:",
-        this.peerConnection.signalingState
+        this.peerConnections[connectionId].signalingState
       );
     }
   }
-  async createOffer() {
-    const offer = await this.peerConnection.createOffer({
+  async createOffer(connectionId) {
+    const offer = await this.peerConnections[connectionId].createOffer({
       offerToReceiveAudio: true,
       offerToReceiveData: true,
     });
-    await this.peerConnection.setLocalDescription(offer);
+    await this.peerConnections[connectionId].setLocalDescription(offer);
     // console.log("signalling state after offer generation", this.peerConnection.signalingState);
-    await this.sendToSocket("offer", { room: this.uniqueId, offer: offer });
+    await this.sendToSocket("offer", {
+      room: this.uniqueId,
+      offer: offer,
+      connectionId: connectionId,
+    });
+    console.log("offer sent for", connectionId)
     return offer;
   }
 
@@ -166,7 +197,7 @@ export default class Sender extends Connection {
     const CHUNK_SIZE = 1024 * 128; // 128KB
     let offset = 0;
     let count = 20;
-    let index=0;
+    let index = 0;
     let dataChannelNumber = 0;
     const metadata = {
       room: this.uniqueId,
@@ -174,51 +205,57 @@ export default class Sender extends Connection {
       size: file.size,
       name: file.name,
     };
+    const finalDataToSend = [];
     this.sendToSocket("metadata", metadata);
-    console.log("Sending file of size", blob.size/1024, "KB");
+    console.log("Sending file of size", blob.size / 1024, "KB");
     const sendNextChunk = () => {
       const slice = blob.slice(offset, offset + CHUNK_SIZE);
       const reader = new FileReader();
 
       reader.onload = (event) => {
         if (event.target.readyState === FileReader.DONE) {
-          dataChannelNumber = (dataChannelNumber + 1) % this.dataChannels.length;
-          
-          const arrayBuffer = this.arrayBufferToBase64( event.target.result);
+          dataChannelNumber =
+            (dataChannelNumber + 1) % this.dataChannels.length;
+
+          const arrayBuffer = this.arrayBufferToBase64(event.target.result);
           const dataToSend = JSON.stringify({
-            type : "data",
+            type: "data",
             data: arrayBuffer,
             dataChannelNumber: dataChannelNumber,
-            index : index
+            index: index,
           });
-          this.dataChannels[dataChannelNumber].send(dataToSend);
+           finalDataToSend.push(dataToSend);
+           console.log("current length",finalDataToSend.length)
+          // this.dataChannels[dataChannelNumber].send(dataToSend);
           // console.log("Sent part", index, "to data channel", dataChannelNumber);
           index++;
           count--;
           offset += CHUNK_SIZE;
           if (offset < blob.size) {
-            if (count==0){
-              const intervalId = setInterval(() => {
-                if (this.partReceived) {
-                  // console.log("Part received");
-                  this.partReceived = false;
-                  count=10;
-                  sendNextChunk();
-                  clearInterval(intervalId);
-                  
-                }
-              }, 10);
-              intervalId;
-
-            }
-            else{
-              sendNextChunk();
-            }
-            
+            // if (count == 0) {
+            //   const intervalId = setInterval(() => {
+            //     if (this.partReceived) {
+            //       // console.log("Part received");
+            //       this.partReceived = false;
+            //       count = 10;
+            //       sendNextChunk();
+            //       clearInterval(intervalId);
+            //     }
+            //   }, 10);
+            //   intervalId;
+            // } else {
+            sendNextChunk();
+            // }
           } else {
             // Optionally send a signal that the blob has been fully sent
-            console.log("File sent");
-            this.dataChannel.send(JSON.stringify({ type: "the file sharing is completed" }));
+            // console.log("File sent");
+
+            finalDataToSend.push(
+              JSON.stringify({ type: "the file sharing is completed" })
+            );
+            console.log("final length",finalDataToSend)
+            console.log(finalDataToSend[finalDataToSend.length[-1]])
+            this.dataBalancer(finalDataToSend)
           }
         }
       };
@@ -227,6 +264,47 @@ export default class Sender extends Connection {
     };
 
     sendNextChunk();
+    
     // this.dataChannel.send(JSON.stringify({ type: "done" }));
+    
+  }
+
+  dataBalancer(finalDataToSend){
+    console.log("final length :",finalDataToSend.length)
+    let start = 0;
+    console.log(finalDataToSend.length)
+    let step = Math.max(Math.floor(finalDataToSend.length / this.noOfPeerConnections),1);
+    
+    console.log("step: ",step)
+    let end = step;
+    for (let i = 0; i < this.noOfPeerConnections; i++) {
+      console.log(`from : ${start} to ${end}`)
+      this.sendDataToDataChannels(finalDataToSend, start, end, i);
+      if(end == finalDataToSend.length-1){
+        break;
+      }
+      start = end;
+      end = Math.min(end + step,finalDataToSend.length-1);
+
+    }
+    end = finalDataToSend.length
+    console.log(`from : ${start} to ${end}`)
+    this.sendDataToDataChannels(finalDataToSend,start,end,0);
+    console.log()
+    console.log("file sent")
+
+  }
+
+  async sendDataToDataChannels(data, start, end, connectionId) {
+    let dataChannelNumber = 0;
+    // console.log("data channel length",this.dataChannels[connectionId])
+    for (let i = start; i < end; i++) {
+      // console.log(`sending ${data[i].type} of ${data[i].index} via ${connectionId} `)
+      dataChannelNumber = (dataChannelNumber + 1) % 10;
+      const sentData = JSON.parse(data[i])
+      console.log("sending :",sentData.type)
+      // console.log("sending via ", this.dataChannels[connectionId][dataChannelNumber])
+      this.dataChannels[connectionId][dataChannelNumber].send(data[i]);
+    }
   }
 }
