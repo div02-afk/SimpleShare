@@ -163,7 +163,7 @@ export default class Receiver extends Connection {
             
             const isCompletedDataReceived = setInterval(() => {
               console.log("no of chunks received:",this.receivedChunks.length)
-              if (message.index === this.receivedChunks.length) {
+              if (message.index === this.sizeReceived) {
                 console.log("All chunks received", this.receivedChunks.length);
                 const receivedBlob = new Blob(this.receivedChunks);
                 console.log("Blob received:", receivedBlob);

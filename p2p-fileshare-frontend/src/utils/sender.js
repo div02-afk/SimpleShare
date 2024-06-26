@@ -225,7 +225,7 @@ export default class Sender extends Connection {
             index: index,
           });
           finalDataToSend.push(dataToSend);
-          if (finalDataToSend.length > 2000) {
+          if (finalDataToSend.length > 1000) {
             this.dataBalancer(finalDataToSend);
             // clearInterval(memoryOverheadSolution);
             finalDataToSend = [];
