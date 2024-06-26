@@ -205,6 +205,12 @@ export default class Sender extends Connection {
       size: file.size,
       name: file.name,
     };
+    const memoryOverflowController = setInterval(() => {
+      if(finalDataToSend.length > 100){
+        this.dataBalancer(finalDataToSend)
+        finalDataToSend = []
+      }
+    }, 200);
     const finalDataToSend = [];
     this.sendToSocket("metadata", metadata);
     console.log("Sending file of size", blob.size / 1024, "KB");
