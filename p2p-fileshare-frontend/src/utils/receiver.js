@@ -187,7 +187,7 @@ export default class Receiver extends Connection {
 
             // document.body.removeChild(link);
           } else if (message.type === "data") {
-            console.log("Received chunk", message.index);
+            // console.log("Received chunk", message.index);
             message.data = this.base64ToArrayBuffer(message.data);
             // Add the received chunk to the array
             // console.log("Received chunk", message.index);
@@ -199,7 +199,7 @@ export default class Receiver extends Connection {
             // console.log("Size received", this.sizeReceived);
             if (this.sizeReceived % 9 == 0) {
               // console.log("sending response", this.sizeReceived);
-              this.dataChannel2.send("received");
+              // this.dataChannel2.send("received");
               // console.log("response sent");
             }
             if (this.receivedChunks.length == 1) {
