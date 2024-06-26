@@ -21,9 +21,9 @@ export default class Sender extends Connection {
     this.peerConnections = this.createPeerConnections(this.noOfPeerConnections);
     this.uniqueId = this.getRandomIDandJoinRoom();
     this.socket = io(serverAddress);
-    
+
     for (let i = 0; i < this.noOfPeerConnections; i++) {
-      this.dataChannels[i] = []
+      this.dataChannels[i] = [];
       this.createDataChannels(10, i);
     }
     // this.dataChannel = this.peerConnection.createDataChannel("myDataChannel");
@@ -84,12 +84,11 @@ export default class Sender extends Connection {
     }
   }
   createDataChannels(noOfDataChannels, connectionId) {
-   
     for (let i = 0; i < noOfDataChannels; i++) {
       const dataChannel = this.peerConnections[connectionId].createDataChannel(
-        "MultiDataChannel_" + connectionId + "_" + i 
+        "MultiDataChannel_" + connectionId + "_" + i
       );
-      
+
       this.dataChannels[connectionId].push(dataChannel);
       dataChannel.onopen = () => {
         console.log("Data channel is open");
@@ -98,12 +97,12 @@ export default class Sender extends Connection {
       // console.log("Data channel created", dataChannel.label);
     }
     // console.log("data channnels created for",connectionId,"with length",this.dataChannels[connectionId].length)
-    console.log(this.dataChannels[connectionId][0])
+    console.log(this.dataChannels[connectionId][0]);
   }
 
   initiateSocketListeners() {
     this.socket.on("answer", (data) => {
-      console.log("answer received for",data.connectionId);
+      console.log("answer received for", data.connectionId);
       this.handleAnswer(data);
     });
     this.socket.on("room-full", () => {
@@ -159,7 +158,7 @@ export default class Sender extends Connection {
       offer: offer,
       connectionId: connectionId,
     });
-    console.log("offer sent for", connectionId)
+    console.log("offer sent for", connectionId);
     return offer;
   }
 
@@ -205,12 +204,7 @@ export default class Sender extends Connection {
       size: file.size,
       name: file.name,
     };
-    const memoryOverflowController = setInterval(() => {
-      if(finalDataToSend.length > 100){
-        this.dataBalancer(finalDataToSend)
-        finalDataToSend = []
-      }
-    }, 200);
+
     const finalDataToSend = [];
     this.sendToSocket("metadata", metadata);
     console.log("Sending file of size", blob.size / 1024, "KB");
@@ -230,8 +224,8 @@ export default class Sender extends Connection {
             dataChannelNumber: dataChannelNumber,
             index: index,
           });
-           finalDataToSend.push(dataToSend);
-           console.log("current length",finalDataToSend.length)
+          finalDataToSend.push(dataToSend);
+          console.log("current length", finalDataToSend.length);
           // this.dataChannels[dataChannelNumber].send(dataToSend);
           // console.log("Sent part", index, "to data channel", dataChannelNumber);
           index++;
@@ -259,9 +253,9 @@ export default class Sender extends Connection {
             finalDataToSend.push(
               JSON.stringify({ type: "the file sharing is completed" })
             );
-            console.log("final length",finalDataToSend)
-            console.log(finalDataToSend[finalDataToSend.length[-1]])
-            this.dataBalancer(finalDataToSend)
+            console.log("final length", finalDataToSend);
+            console.log(finalDataToSend[finalDataToSend.length[-1]]);
+            this.dataBalancer(finalDataToSend);
           }
         }
       };
@@ -270,47 +264,63 @@ export default class Sender extends Connection {
     };
 
     sendNextChunk();
-    
+
     // this.dataChannel.send(JSON.stringify({ type: "done" }));
-    
   }
 
-  dataBalancer(finalDataToSend){
-    console.log("final length :",finalDataToSend.length)
+  dataBalancer(finalDataToSend) {
+    console.log("final length :", finalDataToSend.length);
     let start = 0;
-    console.log(finalDataToSend.length)
-    let step = Math.max(Math.floor(finalDataToSend.length / this.noOfPeerConnections),1);
-    
-    console.log("step: ",step)
+    console.log(finalDataToSend.length);
+    let step = Math.max(
+      Math.floor(finalDataToSend.length / this.noOfPeerConnections),
+      1
+    );
+
+    console.log("step: ", step);
     let end = step;
     for (let i = 0; i < this.noOfPeerConnections; i++) {
-      console.log(`from : ${start} to ${end}`)
+      console.log(`from : ${start} to ${end}`);
       this.sendDataToDataChannels(finalDataToSend, start, end, i);
-      if(end == finalDataToSend.length-1){
+      if (end == finalDataToSend.length - 1) {
         break;
       }
       start = end;
-      end = Math.min(end + step,finalDataToSend.length-1);
-
+      end = Math.min(end + step, finalDataToSend.length - 1);
     }
-    end = finalDataToSend.length
-    console.log(`from : ${start} to ${end}`)
-    this.sendDataToDataChannels(finalDataToSend,start,end,0);
-    console.log()
-    console.log("file sent")
-
+    end = finalDataToSend.length;
+    console.log(`from : ${start} to ${end}`);
+    this.sendDataToDataChannels(finalDataToSend, start, end, 0);
+    console.log();
+    console.log("file sent");
   }
 
   async sendDataToDataChannels(data, start, end, connectionId) {
     let dataChannelNumber = 0;
+
     // console.log("data channel length",this.dataChannels[connectionId])
     for (let i = start; i < end; i++) {
-      // console.log(`sending ${data[i].type} of ${data[i].index} via ${connectionId} `)
       dataChannelNumber = (dataChannelNumber + 1) % 10;
-      const sentData = JSON.parse(data[i])
-      console.log("sending :",sentData.type)
+      if (
+        this.dataChannels[connectionId][dataChannelNumber].readyState != "open"
+      ) {
+        const whenReady = setInterval(() => {
+          if (
+            this.dataChannels[connectionId][dataChannelNumber].readyState ==
+            "open"
+          ) {
+            this.dataChannels[connectionId][dataChannelNumber].send(data[i]);
+            clearInterval(whenReady);
+          }
+        }, 50);
+        whenReady;
+        continue;
+      }
+      // console.log(`sending ${data[i].type} of ${data[i].index} via ${connectionId} `)
+      else {
+        this.dataChannels[connectionId][dataChannelNumber].send(data[i]);
+      }
       // console.log("sending via ", this.dataChannels[connectionId][dataChannelNumber])
-      this.dataChannels[connectionId][dataChannelNumber].send(data[i]);
     }
   }
 }
