@@ -204,7 +204,7 @@ export default class Sender extends Connection {
       size: file.size,
       name: file.name,
     };
-    const finalDataToSend = [];
+    let finalDataToSend = [];
    
     this.sendToSocket("metadata", metadata);
     console.log("Sending file of size", blob.size / 1024, "KB");
