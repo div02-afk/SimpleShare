@@ -73,7 +73,6 @@ export default class Receiver extends Connection {
           console.log(`Peer connection ${i} is established`);
         }
       };
-      
     }
   }
 
@@ -98,7 +97,7 @@ export default class Receiver extends Connection {
     });
   }
   async handleOffer(data) {
-    console.log(data)
+    console.log(data);
     const connectionId = data.connectionId;
     const offer = data.offer;
     console.log("offer received for", connectionId);
@@ -152,7 +151,8 @@ export default class Receiver extends Connection {
     this.peerConnections[connectionId].ondatachannel = (event) => {
       this.dataChannel = event.channel;
       // console.log("Data channel received", this.dataChannel.label);
-      this.dataChannel.onopen = () => console.log("Data channel is open for",connectionId);
+      this.dataChannel.onopen = () =>
+        console.log("Data channel is open for", connectionId);
       this.dataChannel.onclose = () => console.log("Data channel is closed");
       this.dataChannel.onmessage = (event) => {
         // console.log("Data channel received message");
@@ -160,22 +160,29 @@ export default class Receiver extends Connection {
           const message = JSON.parse(event.data);
           // console.log("Message received in valid format",message.index,message.type);
           if (message.type === "the file sharing is completed") {
+            
+            const isCompletedDataReceived = setInterval(() => {
+              if (message.index === this.receivedChunks.length) {
+                console.log("All chunks received", this.receivedChunks.length);
+                const receivedBlob = new Blob(this.receivedChunks);
+                console.log("Blob received:", receivedBlob);
+
+                // Reset for the next blob
+                this.receivedChunks = [];
+                this.receiving = false;
+
+                // Create a URL for the Blob and use it in an HTML element
+                const url = URL.createObjectURL(receivedBlob);
+                const link = document.createElement("a");
+                link.href = url;
+                link.download = this.metadata.name || "temp.temp"; // Change the filename if needed
+                link.click();
+                URL.revokeObjectURL(url);
+              }
+            }, 500);
+            isCompletedDataReceived;
             // All chunks received, assemble them into a single Blob
-            console.log("All chunks received", this.receivedChunks.length);
-            const receivedBlob = new Blob(this.receivedChunks);
-            console.log("Blob received:", receivedBlob);
 
-            // Reset for the next blob
-            this.receivedChunks = [];
-            this.receiving = false;
-
-            // Create a URL for the Blob and use it in an HTML element
-            const url = URL.createObjectURL(receivedBlob);
-            const link = document.createElement("a");
-            link.href = url;
-            link.download = this.metadata.name || "temp.temp"; // Change the filename if needed
-            link.click();
-            URL.revokeObjectURL(url);
             // document.body.removeChild(link);
           } else if (message.type === "data") {
             console.log("Received chunk", message.index);

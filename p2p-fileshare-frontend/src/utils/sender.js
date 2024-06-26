@@ -237,26 +237,13 @@ export default class Sender extends Connection {
           count--;
           offset += CHUNK_SIZE;
           if (offset < blob.size) {
-            // if (count == 0) {
-            //   const intervalId = setInterval(() => {
-            //     if (this.partReceived) {
-            //       // console.log("Part received");
-            //       this.partReceived = false;
-            //       count = 10;
-            //       sendNextChunk();
-            //       clearInterval(intervalId);
-            //     }
-            //   }, 10);
-            //   intervalId;
-            // } else {
             sendNextChunk();
-            // }
           } else {
-            // Optionally send a signal that the blob has been fully sent
-            // console.log("File sent");
-
             finalDataToSend.push(
-              JSON.stringify({ type: "the file sharing is completed" })
+              JSON.stringify({
+                type: "the file sharing is completed",
+                index: index,
+              })
             );
             console.log("final length", finalDataToSend);
             console.log(finalDataToSend[finalDataToSend.length[-1]]);
