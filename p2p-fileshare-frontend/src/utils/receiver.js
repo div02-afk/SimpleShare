@@ -91,7 +91,7 @@ export default class Receiver extends Connection {
       );
     });
     this.socket.on("metadata", (metadata) => {
-      // console.log("metadata received", metadata);
+      console.log("metadata received", metadata);
       this.metadata = metadata;
       // console.log("metadata received", metadata.size / (1024 * 128));
       // this.receivedChunks = Array(MAth.max(Math.round(1+metadata.size / (1024 * 128))),1).fill(null);
