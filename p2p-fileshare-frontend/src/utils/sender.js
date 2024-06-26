@@ -323,6 +323,7 @@ export default class Sender extends Connection {
       }
       // console.log(`sending ${data[i].type} of ${data[i].index} via ${connectionId} `)
       else {
+        console.log("buffered amt:" ,this.dataChannels[connectionId][dataChannelNumber].bufferedAmount)
         this.dataChannels[connectionId][dataChannelNumber].send(data[i]);
       }
       // console.log("sending via ", this.dataChannels[connectionId][dataChannelNumber])
