@@ -178,6 +178,7 @@ export default class Receiver extends Connection {
                 link.download = this.metadata.name || "temp.temp"; // Change the filename if needed
                 link.click();
                 URL.revokeObjectURL(url);
+                clearInterval(isCompletedDataReceived);
               }
             }, 500);
             isCompletedDataReceived;

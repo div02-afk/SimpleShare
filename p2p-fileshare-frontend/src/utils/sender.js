@@ -245,8 +245,11 @@ export default class Sender extends Connection {
                 index: index,
               })
             );
-            console.log("final length", finalDataToSend);
-            console.log(finalDataToSend[finalDataToSend.length[-1]]);
+            console.log(
+              "final length",
+              finalDataToSend[finalDataToSend.length - 1]
+            );
+
             this.dataBalancer(finalDataToSend);
           }
         }
