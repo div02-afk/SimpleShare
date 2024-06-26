@@ -23,7 +23,7 @@ export default class Connection{
         peerConnections.push(new RTCPeerConnection(peerConnectionInfo));
         
       }
-      console.log(peerConnections)
+      // console.log(peerConnections)
       return peerConnections;
     }
     async sendToSocket(type, msg) {
