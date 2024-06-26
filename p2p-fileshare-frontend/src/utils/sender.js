@@ -205,7 +205,7 @@ export default class Sender extends Connection {
       name: file.name,
     };
     let finalDataToSend = [];
-   
+
     this.sendToSocket("metadata", metadata);
     console.log("Sending file of size", blob.size / 1024, "KB");
     const sendNextChunk = () => {
@@ -225,10 +225,10 @@ export default class Sender extends Connection {
             index: index,
           });
           finalDataToSend.push(dataToSend);
-          if(finalDataToSend.length > 2000){
+          if (finalDataToSend.length > 2000) {
             this.dataBalancer(finalDataToSend);
             // clearInterval(memoryOverheadSolution);
-            finalDataToSend = []
+            finalDataToSend = [];
           }
           console.log("current length", finalDataToSend.length);
           // this.dataChannels[dataChannelNumber].send(dataToSend);
@@ -307,12 +307,13 @@ export default class Sender extends Connection {
     for (let i = start; i < end; i++) {
       dataChannelNumber = (dataChannelNumber + 1) % 10;
       if (
-        this.dataChannels[connectionId][dataChannelNumber].readyState != "open"
+        this.dataChannels[connectionId][dataChannelNumber].bufferedAmount >
+        14 * 1024 * 1024
       ) {
         const whenReady = setInterval(() => {
           if (
-            this.dataChannels[connectionId][dataChannelNumber].readyState ==
-            "open"
+            this.dataChannels[connectionId][dataChannelNumber].bufferedAmount <
+            10 * 1024 * 1024
           ) {
             this.dataChannels[connectionId][dataChannelNumber].send(data[i]);
             clearInterval(whenReady);
@@ -323,7 +324,10 @@ export default class Sender extends Connection {
       }
       // console.log(`sending ${data[i].type} of ${data[i].index} via ${connectionId} `)
       else {
-        console.log("buffered amt:" ,this.dataChannels[connectionId][dataChannelNumber].bufferedAmount)
+        console.log(
+          "buffered amt:",
+          this.dataChannels[connectionId][dataChannelNumber].bufferedAmount
+        );
         this.dataChannels[connectionId][dataChannelNumber].send(data[i]);
       }
       // console.log("sending via ", this.dataChannels[connectionId][dataChannelNumber])
