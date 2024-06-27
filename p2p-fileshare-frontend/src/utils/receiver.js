@@ -192,8 +192,10 @@ export default class Receiver extends Connection {
             // Add the received chunk to the array
             // console.log("Received chunk", message.index);
             const { index, totalChunks, data: arrayBuffer } = message;
-
-            // console.log("Received chunk", index, arrayBuffer.byteLength);
+            if(this.receivedChunks[index] = arrayBuffer){
+              return;
+            }
+              // console.log("Received chunk", index, arrayBuffer.byteLength);
             this.receivedChunks[index] = arrayBuffer;
             this.sizeReceived++;
             // console.log("Size received", this.sizeReceived);
