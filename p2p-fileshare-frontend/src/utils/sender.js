@@ -2,9 +2,10 @@ import { io } from "socket.io-client";
 import Connection from "./Connectionclass.js";
 import serverAddress from "./serverLink.js";
 import splitFile from "./fileSplitter.js";
-import store from "./store.js";
+import store from "../store.js";
 export default class Sender extends Connection {
   peerConnection = null;
+  temp = 0;
   socket = null;
   offers = [];
   uniqueId = null;
@@ -79,6 +80,11 @@ export default class Sender extends Connection {
         ) {
           store.dispatch({ type: "CONNECT" });
           console.log(`Peer connection ${i} is established`);
+          this.temp++;
+          if (this.temp == this.noOfPeerConnections) {
+            
+            store.dispatch({ type: "ALL_CONNECTED" });
+        }
         }
       };
     }
@@ -310,7 +316,7 @@ export default class Sender extends Connection {
           }
         }, 50);
         whenReady;
-        continue;
+        // continue;
       }
       // console.log(`sending ${data[i].type} of ${data[i].index} via ${connectionId} `)
       else {

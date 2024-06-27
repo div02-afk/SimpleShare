@@ -1,7 +1,7 @@
 import { io } from "socket.io-client";
 import Connection from "./Connectionclass.js";
 import serverAddress from "./serverLink.js";
-import store from "./store.js";
+import store from "../store.js";
 
 export default class Receiver extends Connection {
   peerConnection = null;
@@ -69,8 +69,12 @@ export default class Receiver extends Connection {
           this.peerConnections[i].iceConnectionState === "connected" ||
           this.peerConnections[i].iceConnectionState === "completed"
         ) {
-          store.dispatch({ type: "CONNECT" });
+          // store.dispatch({ type: "CONNECT" });
           console.log(`Peer connection ${i} is established`);
+          this.temp++;
+          if (this.temp == this.noOfPeerConnections) {
+            store.dispatch({ type: "ALL_CONNECTED" });
+          }
         }
       };
     }
@@ -92,6 +96,7 @@ export default class Receiver extends Connection {
     this.socket.on("metadata", (metadata) => {
       console.log("metadata received", metadata);
       this.metadata = metadata;
+      store.dispatch({ type: "METADATA", payload: metadata });
       // console.log("metadata received", metadata.size / (1024 * 128));
       // this.receivedChunks = Array(MAth.max(Math.round(1+metadata.size / (1024 * 128))),1).fill(null);
     });
@@ -160,10 +165,9 @@ export default class Receiver extends Connection {
           const message = JSON.parse(event.data);
           // console.log("Message received in valid format",message.index,message.type);
           if (message.type === "the file sharing is completed") {
-            
             const isCompletedDataReceived = setInterval(() => {
-              console.log("no of chunks received:",this.receivedChunks.length)
-              if (message.index === this.sizeReceived) {
+              console.log("no of chunks received:", this.sizeReceived);
+              if (message.index <= this.sizeReceived) {
                 console.log("All chunks received", this.receivedChunks.length);
                 const receivedBlob = new Blob(this.receivedChunks);
                 console.log("Blob received:", receivedBlob);
@@ -192,28 +196,26 @@ export default class Receiver extends Connection {
             // Add the received chunk to the array
             // console.log("Received chunk", message.index);
             const { index, totalChunks, data: arrayBuffer } = message;
-            if(this.receivedChunks[index] = arrayBuffer){
-              return;
-            }
+            if (!this.receivedChunks[index]) {
               // console.log("Received chunk", index, arrayBuffer.byteLength);
-            this.receivedChunks[index] = arrayBuffer;
-            this.sizeReceived++;
-            // console.log("Size received", this.sizeReceived);
-            if (this.sizeReceived % 9 == 0) {
-              // console.log("sending response", this.sizeReceived);
-              // this.dataChannel2.send("received");
-              // console.log("response sent");
+              this.receivedChunks[index] = arrayBuffer;
+              this.sizeReceived++;
+              // console.log("Size received", this.sizeReceived);
+              if (this.sizeReceived % 9 == 0) {
+                // console.log("sending response", this.sizeReceived);
+                // this.dataChannel2.send("received");
+                // console.log("response sent");
+              }
+              if (this.receivedChunks.length == 1) {
+                store.dispatch({ type: "RECEIVE" });
+              }
+              store.dispatch({
+                type: "SIZE_RECEIVED",
+                payload:
+                  this.sizeReceived,
+              });
+              this.receiving = true;
             }
-            if (this.receivedChunks.length == 1) {
-              store.dispatch({ type: "RECEIVE" });
-            }
-            store.dispatch({
-              type: "SIZE_RECEIVED",
-              payload:
-                store.getState().key.sizeReceived +
-                arrayBuffer.byteLength / 1024,
-            });
-            this.receiving = true;
           }
         } else {
           console.log("Data channel received message", event.data);

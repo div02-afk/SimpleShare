@@ -14,7 +14,7 @@ export default function Home() {
             height: "60%",
             transform: "translateX(-200px)",
             fontSize: "5rem",
-            transition: { duration: 1, type: "spring" },
+            transition: { duration: 0.6, type: "spring" },
           }}
         >
           <Link to="/send">
@@ -28,7 +28,7 @@ export default function Home() {
             height: "60%",
             transform: "translateX(200px)",
             fontSize: "5rem",
-            transition: { duration: 1, type: "spring" },
+            transition: { duration: 0.6, type: "spring" },
           }}
         >
           <Link to="/receive">

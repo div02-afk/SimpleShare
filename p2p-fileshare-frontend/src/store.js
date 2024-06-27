@@ -4,7 +4,9 @@ import { produce } from "immer";
 const initialState = {
     isReceiving : false,
     sizeReceived : 0,
-    isConnected : false
+    isConnected : false,
+    file : null,
+    metadata : null
 }
 
 const keyReducer = (state = initialState, action) => {
@@ -16,8 +18,13 @@ const keyReducer = (state = initialState, action) => {
             case 'SIZE_RECEIVED':
                 draft.sizeReceived = action.payload;
                 break;
-            case 'CONNECT':
+            case 'ALL_CONNECTED':
                 draft.isConnected = true;
+                console.log("All connected");
+                break;
+            case 'METADATA':
+                
+                draft.metadata = action.payload;
                 break;
             default:
                 return state;
