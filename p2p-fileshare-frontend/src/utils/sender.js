@@ -18,7 +18,7 @@ export default class Sender extends Connection {
   noOfPeerConnections = 0;
   constructor() {
     super();
-    this.noOfPeerConnections = 5;
+    this.noOfPeerConnections = 10;
     this.peerConnections = this.createPeerConnections(this.noOfPeerConnections);
     this.uniqueId = this.getRandomIDandJoinRoom();
     this.socket = io(serverAddress);
@@ -231,7 +231,7 @@ export default class Sender extends Connection {
             index: index,
           });
           finalDataToSend.push(dataToSend);
-          if (finalDataToSend.length > 1000) {
+          if (finalDataToSend.length > 500) {
             this.dataBalancer(finalDataToSend);
             // clearInterval(memoryOverheadSolution);
             finalDataToSend = [];

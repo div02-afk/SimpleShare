@@ -6,6 +6,7 @@ const googleServers = [{
 
 const peerConnectionInfo = {
     iceServers: servers,
+    sdpSemantics: 'unified-plan'
     // turnServers: [
     //     {
     //         urls: "numb.viagenie.ca",
