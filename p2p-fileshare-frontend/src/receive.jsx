@@ -10,7 +10,7 @@ const dataFormatHandler = (size) => {
   if (size < 1024) {
     return `${size} KB`;
   } else {
-    return `${size / 1024} MB`;
+    return `${Math.round(size / 1024)} MB`;
   }
 };
 
@@ -72,10 +72,10 @@ export default function Send() {
             <p className="text-2xl">
               File Size: {dataFormatHandler(totalSize)}
             </p>
-            {/* <p className="text-2xl">
-              Received: {dataFormatHandler(sizeReceived)}
-            </p> */}
-            <div className="p-10">
+            <p className="text-2xl">
+              Received: <div className="p-10">{dataFormatHandler(sizeReceived)}</div>
+            </p>
+            <div className="p-32">
             <LinearProgress variant="determinate" value={(100 * sizeReceived) / totalSize} />
             </div>
           </div>
