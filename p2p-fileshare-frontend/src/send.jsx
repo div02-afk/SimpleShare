@@ -4,6 +4,15 @@ import Dropzone from "react-dropzone";
 import store from "./store";
 import { motion } from "framer-motion";
 import ToastNotification from "./components/toastNoti";
+
+const shortener = (str) => {
+  if (str.length > 20) {
+    return str.slice(0, 20) + "...";
+  }
+  return str;
+
+}
+
 export default function Send() {
   const [connection, setConnection] = useState(null);
   const [uniqueId, setUniqueId] = useState("");
@@ -87,7 +96,7 @@ export default function Send() {
               <input {...getInputProps()} className=""/>
               <div className="mt-10 "></div>
               {file ? (
-                <p className="text-center text-xl">{file.name}</p>
+                <p className="text-center text-xl">{shortener(file.name)}</p>
               ) : (
                 <p className="text-center text-xl">
                   Drag 'n' drop some files here, or click to select files

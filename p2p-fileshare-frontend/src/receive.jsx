@@ -4,6 +4,7 @@ import store from "./store";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCirclePlus, faCircleCheck } from "@fortawesome/free-solid-svg-icons";
 import ToastNotification from "./components/toastNoti";
+import { LinearProgress } from "@mui/material";
 
 const dataFormatHandler = (size) => {
   if (size < 1024) {
@@ -20,7 +21,7 @@ export default function Send() {
   const [isConnected, setIsConnected] = useState(false);
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [totalSize, setTotalSize] = useState(0);
-  
+
   const connect = () => {
     const conn = new Receiver(uniqueId);
     setConnection(conn);
@@ -68,10 +69,15 @@ export default function Send() {
       {sizeReceived > 0 ? (
         <>
           <div className="mt-10">
-            <p className="text-2xl">File Size: {dataFormatHandler(totalSize)}</p>
             <p className="text-2xl">
-              Received: {dataFormatHandler(sizeReceived)}
+              File Size: {dataFormatHandler(totalSize)}
             </p>
+            {/* <p className="text-2xl">
+              Received: {dataFormatHandler(sizeReceived)}
+            </p> */}
+            <div className="p-10">
+            <LinearProgress variant="determinate" value={(100 * sizeReceived) / totalSize} />
+            </div>
           </div>
         </>
       ) : (
