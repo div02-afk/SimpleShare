@@ -51,7 +51,7 @@ io.on('connection', (socket) => {
 });
 
 app.get('/random', (req, res) => {
-    const randomID = crypto.randomBytes(6).toString('hex');
+    const randomID = crypto.randomBytes(2).toString('hex');
     res.send(randomID);
 });
 
