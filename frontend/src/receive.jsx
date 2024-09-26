@@ -5,14 +5,9 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCirclePlus, faCircleCheck } from "@fortawesome/free-solid-svg-icons";
 import ToastNotification from "./components/toastNoti";
 import { LinearProgress } from "@mui/material";
-
-const dataFormatHandler = (size) => {
-  if (size < 1024) {
-    return `${size} KB`;
-  } else {
-    return `${Math.round(size / 1024)} MB`;
-  }
-};
+import Loader from "./components/loader";
+import dataFormatHandler from "./utils/dataFormatHandler";
+import GitHubLink from "./components/githublink";
 
 export default function Send() {
   const [connection, setConnection] = useState(null);
@@ -21,8 +16,13 @@ export default function Send() {
   const [isConnected, setIsConnected] = useState(false);
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [totalSize, setTotalSize] = useState(0);
-
+  const [isLoading, setisLoading] = useState(false);
   const connect = () => {
+    debugger;
+    console.log("Connecting",uniqueId);
+    if (uniqueId.length < 4) return;
+    console.log("Connecting");
+    setisLoading(true);
     const conn = new Receiver(uniqueId);
     setConnection(conn);
   };
@@ -31,6 +31,9 @@ export default function Send() {
     setIsConnected(store.getState().key.isConnected);
     if (store.getState().key.metadata) {
       setTotalSize(Math.round(store.getState().key.metadata.size / 1024));
+    }
+    if (store.getState().key.isConnected) {
+      setisLoading(false);
     }
   });
   useEffect(() => {
@@ -43,6 +46,14 @@ export default function Send() {
   useEffect(() => {
     setIsModalVisible(isConnected);
   }, [isConnected]);
+
+  useEffect(() => {
+    addEventListener("keypress", (e) => {
+      if (e.key === "Enter") {
+        connect();
+      }
+    });
+  }, []);
   return (
     <div className="w-screen h-screen text-center bg-black text-white">
       <div className="mb-20 text-3xl bg-transparent ">
@@ -60,10 +71,14 @@ export default function Send() {
           placeholder="Share Code"
         ></input>
         <button onClick={connect}>
-          <FontAwesomeIcon
-            icon={isConnected ? faCircleCheck : faCirclePlus}
-            size="xl"
-          />
+          {isLoading ? (
+            <Loader height={20} width={20} />
+          ) : (
+            <FontAwesomeIcon
+              icon={isConnected ? faCircleCheck : faCirclePlus}
+              size="xl"
+            />
+          )}
         </button>
       </div>
       {sizeReceived > 0 ? (
@@ -73,10 +88,14 @@ export default function Send() {
               File Size: {dataFormatHandler(totalSize)}
             </p>
             <p className="text-2xl">
-              Received: <div className="p-10">{dataFormatHandler(sizeReceived)}</div>
+              Received:{" "}
+              <div className="p-10">{dataFormatHandler(sizeReceived)}</div>
             </p>
             <div className="p-32">
-            <LinearProgress variant="determinate" value={(100 * sizeReceived) / totalSize} />
+              <LinearProgress
+                variant="determinate"
+                value={(100 * sizeReceived) / totalSize}
+              />
             </div>
           </div>
         </>
@@ -88,35 +107,11 @@ export default function Send() {
             </div>
           </>
         )
-      )}
+      )}<GitHubLink />
       <ToastNotification
         isModalVisible={isModalVisible}
         text="Connection Successful"
       />
     </div>
-    // <div className="receive">
-    //   <h1>Receive</h1>
-    //   <p>Welcome to the receive page!</p>
-    //   <input
-    //     value={uniqueId}
-    //     onChange={(e) => {
-    //       setUniqueId(e.target.value);
-    //     }}
-    //     placeholder="Unique id"
-    //   ></input>
-    //   <button
-    //     onClick={() => {
-    //       connect();
-    //     }}
-    //   >
-    //     Receive
-    //   </button>
-    //   <p> {isConnected ? "connection successful" : "not connected"}</p>
-    //   {sizeReceived < 1024 ? (
-    //     <p>{sizeReceived} KB received </p>
-    //   ) : (
-    //     <p>{sizeReceived / 1024} MB received </p>
-    //   )}
-    // </div>
   );
 }

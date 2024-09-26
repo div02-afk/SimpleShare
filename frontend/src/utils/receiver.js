@@ -202,17 +202,15 @@ export default class Receiver extends Connection {
               this.sizeReceived++;
               // console.log("Size received", this.sizeReceived);
               if (this.sizeReceived % 9 == 0) {
-                // console.log("sending response", this.sizeReceived);
-                // this.dataChannel2.send("received");
-                // console.log("response sent");
+                
+                this.sendToSocket("received", {data : this.sizeReceived, room : this.uniqueId});
               }
               if (this.receivedChunks.length == 1) {
                 store.dispatch({ type: "RECEIVE" });
               }
               store.dispatch({
                 type: "SIZE_RECEIVED",
-                payload:
-                  this.sizeReceived,
+                payload: this.sizeReceived,
               });
               this.receiving = true;
             }
