@@ -1,6 +1,6 @@
-# P2P FileShare
+# SimpleShare
 
-Welcome to the P2P FileShare project! This project provides a secure and efficient way to share files directly between peers using WebRTC. The key features of this project include multi-connection support for faster transfers, end-to-end encryption, and no file storage on any server during the transfer process. For large files, the project splits them into manageable parts to ensure smooth transfer.
+Welcome to the SimpleShare project! This project provides a secure and efficient way to share files directly between peers using WebRTC. The key features of this project include multi-connection support for faster transfers, end-to-end encryption, and no file storage on any server during the transfer process. For large files, the project splits them into manageable parts to ensure smooth transfer.
 
 ## Features
 
