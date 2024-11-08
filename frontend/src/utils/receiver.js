@@ -19,7 +19,7 @@ export default class Receiver extends Connection {
   noOfPeerConnections = 0;
   constructor(uniqueId) {
     super();
-    this.noOfPeerConnections = 20;
+    this.noOfPeerConnections = 15;
     this.peerConnections = this.createPeerConnections(this.noOfPeerConnections);
     console.log(this.peerConnections);
     this.uniqueId = uniqueId;
