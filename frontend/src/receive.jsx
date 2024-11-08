@@ -18,7 +18,7 @@ export default function Send() {
   const [totalSize, setTotalSize] = useState(0);
   const [isLoading, setisLoading] = useState(false);
   const connect = () => {
-    debugger;
+  
     console.log("Connecting",uniqueId);
     if (uniqueId.length < 4) return;
     console.log("Connecting");
