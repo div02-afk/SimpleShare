@@ -18,7 +18,7 @@ export default class Sender extends Connection {
   noOfPeerConnections = 0;
   constructor() {
     super();
-    this.noOfPeerConnections = 10;
+    this.noOfPeerConnections = 20;
     this.peerConnections = this.createPeerConnections(this.noOfPeerConnections);
     this.uniqueId = this.getRandomIDandJoinRoom();
     this.socket = io(serverAddress);
