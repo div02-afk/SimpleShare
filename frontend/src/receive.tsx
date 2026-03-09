@@ -1,17 +1,23 @@
 import { faCircleCheck, faCirclePlus } from "@fortawesome/free-solid-svg-icons";
+import type { IconProp } from "@fortawesome/fontawesome-svg-core";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { LinearProgress } from "@mui/material";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import GitHubLink from "./components/githublink";
 import Loader from "./components/loader";
-import { useTransferStore } from "./store";
 import ToastNotification from "./components/toastNoti";
-import { Receiver } from "./utils/connection";
+import { useReceiverSession } from "./hooks/useReceiverSession";
+import { useTransferSpeed } from "./hooks/useTransferSpeed";
+import { useTransferStore } from "./store";
 import dataFormatHandler, {
   transferRateFormatHandler,
 } from "./utils/dataFormatHandler";
 
-const getReceiverMessage = (transferStatus, writeMode, error) => {
+const getReceiverMessage = (
+  transferStatus: ReturnType<typeof useTransferStore.getState>["transferStatus"],
+  writeMode: ReturnType<typeof useTransferStore.getState>["writeMode"],
+  error: string | null
+) => {
   if (transferStatus === "awaiting-save") {
     return "File metadata received. Choose where to save before transfer starts.";
   }
@@ -45,7 +51,7 @@ const getReceiverMessage = (transferStatus, writeMode, error) => {
   return null;
 };
 
-export default function Send() {
+export default function Receive() {
   const sizeReceived = useTransferStore((state) => state.sizeReceived);
   const bytesWritten = useTransferStore((state) => state.bytesWritten);
   const isConnected = useTransferStore((state) => state.isConnected);
@@ -56,110 +62,53 @@ export default function Send() {
   const resolvedFileName = useTransferStore(
     (state) => state.resolvedFileName
   );
-  const [connection, setConnection] = useState(null);
+  const { session, connect } = useReceiverSession();
   const [uniqueId, setUniqueId] = useState("");
   const [isModalVisible, setIsModalVisible] = useState(false);
-  const [isTransferCompleteVisible, setIsTransferCompleteVisible] = useState(false);
-  const [isLoading, setisLoading] = useState(false);
-  const [transferSpeed, setTransferSpeed] = useState(0);
-  const sizeReceivedRef = useRef(0);
+  const [isTransferCompleteVisible, setIsTransferCompleteVisible] =
+    useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const transferSpeed = useTransferSpeed(sizeReceived, transferStatus);
 
-  const connect = () => {
-    if (uniqueId.length < 4) return;
-    setisLoading(true);
-    const conn = new Receiver(uniqueId);
-    setConnection(conn);
-  };
-
-  const handleStartDownload = async () => {
-    if (!connection) {
+  useEffect(() => {
+    if (!isConnected) {
       return;
     }
 
-    await connection.prepareDownload();
-  };
+    setIsLoading(false);
+    setIsModalVisible(true);
+    const timeout = window.setTimeout(() => {
+      setIsModalVisible(false);
+    }, 1500);
 
-  useEffect(() => {
-    if (isConnected) {
-      setisLoading(false);
-    }
+    return () => {
+      window.clearTimeout(timeout);
+    };
   }, [isConnected]);
 
   useEffect(() => {
-    if (isModalVisible) {
-      setTimeout(() => {
-        setIsModalVisible(false);
-      }, 1500);
-    }
-  }, [isModalVisible]);
-
-  useEffect(() => {
-    setIsModalVisible(isConnected);
-  }, [isConnected]);
-
-  useEffect(() => {
-    sizeReceivedRef.current = sizeReceived;
-  }, [sizeReceived]);
-
-  useEffect(() => {
-    if (transferStatus === "completed") {
-      setIsTransferCompleteVisible(true);
-      const timeout = setTimeout(() => {
-        setIsTransferCompleteVisible(false);
-      }, 2000);
-
-      return () => {
-        clearTimeout(timeout);
-      };
-    }
-  }, [transferStatus]);
-
-  useEffect(() => {
-    if (
-      transferStatus === "idle" ||
-      transferStatus === "awaiting-save" ||
-      transferStatus === "finalizing-write" ||
-      transferStatus === "completed" ||
-      transferStatus === "failed"
-    ) {
-      setTransferSpeed(0);
+    if (transferStatus !== "completed") {
       return;
     }
 
-    let previousBytes = sizeReceivedRef.current;
-    let previousTime = Date.now();
-
-    const interval = setInterval(() => {
-      const now = Date.now();
-      const deltaBytes = sizeReceivedRef.current - previousBytes;
-      const deltaTime = now - previousTime;
-
-      setTransferSpeed(
-        deltaTime > 0 ? Math.max(0, (deltaBytes * 1000) / deltaTime) : 0
-      );
-
-      previousBytes = sizeReceivedRef.current;
-      previousTime = now;
-    }, 1000);
+    setIsTransferCompleteVisible(true);
+    const timeout = window.setTimeout(() => {
+      setIsTransferCompleteVisible(false);
+    }, 2000);
 
     return () => {
-      clearInterval(interval);
+      window.clearTimeout(timeout);
     };
   }, [transferStatus]);
 
-  useEffect(() => {
-    const handleKeyPress = (e) => {
-      if (e.key === "Enter") {
-        connect();
-      }
-    };
+  const handleConnect = async () => {
+    if (uniqueId.length < 4) {
+      return;
+    }
 
-    addEventListener("keypress", handleKeyPress);
-
-    return () => {
-      removeEventListener("keypress", handleKeyPress);
-    };
-  }, [uniqueId]);
+    setIsLoading(true);
+    await connect(uniqueId);
+  };
 
   const transferMessage = getReceiverMessage(
     transferStatus,
@@ -167,10 +116,10 @@ export default function Send() {
     transferError
   );
   const totalSize = metadata?.size ?? 0;
-  const canPickDirectFile = connection?.supportsDirectFileWrite?.() ?? false;
+  const canPickDirectFile = session?.supportsDirectFileWrite() ?? false;
   const canStartTransfer =
-    metadata &&
-    connection &&
+    Boolean(metadata) &&
+    Boolean(session) &&
     (transferStatus === "awaiting-save" ||
       (transferStatus === "failed" && sizeReceived === 0 && writeMode == null));
   const showProgress =
@@ -178,8 +127,7 @@ export default function Send() {
     transferStatus === "fallback-buffering" ||
     transferStatus === "finalizing-write" ||
     transferStatus === "completed";
-  const progressBytes =
-    writeMode === "stream" ? bytesWritten : sizeReceived;
+  const progressBytes = writeMode === "stream" ? bytesWritten : sizeReceived;
   const showWrittenBytes =
     writeMode === "stream" &&
     (transferStatus === "streaming-direct-write" ||
@@ -190,32 +138,40 @@ export default function Send() {
     transferStatus === "fallback-buffering";
 
   return (
-    <div className="w-screen min-h-screen text-center bg-black text-white pb-10">
-      <div className="mb-20 text-3xl bg-transparent ">
+    <div className="min-h-screen w-screen bg-black pb-10 text-center text-white">
+      <div className="mb-20 bg-transparent text-3xl">
         <h1 className="pt-10">Receive Anything</h1>
       </div>
 
-      <div className="border-2 w-80 flex justify-between p-2 rounded-2xl m-auto">
+      <form
+        className="m-auto flex w-80 justify-between rounded-2xl border-2 p-2"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void handleConnect();
+        }}
+      >
         <input
-          className="outline-none bg-transparent"
+          className="bg-transparent outline-none"
           value={uniqueId}
-          onChange={(e) => {
-            setUniqueId(e.target.value);
+          onChange={(event) => {
+            setUniqueId(event.target.value);
           }}
           type="text"
           placeholder="Share Code"
-        ></input>
-        <button onClick={connect}>
+        />
+        <button type="submit">
           {isLoading ? (
             <Loader height={20} width={20} />
           ) : (
             <FontAwesomeIcon
-              icon={isConnected ? faCircleCheck : faCirclePlus}
+              icon={
+                (isConnected ? faCircleCheck : faCirclePlus) as unknown as IconProp
+              }
               size="xl"
             />
           )}
         </button>
-      </div>
+      </form>
 
       {isConnected && transferStatus === "idle" && (
         <div className="mt-10">
@@ -224,7 +180,7 @@ export default function Send() {
       )}
 
       {metadata && (
-        <div className="mt-10 flex flex-col gap-4 items-center">
+        <div className="mt-10 flex flex-col items-center gap-4">
           <p className="text-2xl">File: {metadata.name}</p>
           <p className="text-xl">File Size: {dataFormatHandler(totalSize)}</p>
           {resolvedFileName && (
@@ -247,9 +203,9 @@ export default function Send() {
           {canStartTransfer && (
             <button
               onClick={() => {
-                void handleStartDownload();
+                void session?.prepareDownload();
               }}
-              className="bg-blue-500 px-8 py-3 rounded-2xl"
+              className="rounded-2xl bg-blue-500 px-8 py-3"
             >
               {canPickDirectFile ? "Save as..." : "Start download"}
             </button>
@@ -260,11 +216,15 @@ export default function Send() {
       {showProgress && (
         <div className="mt-10">
           <p className="text-2xl">
-            Received: <span className="inline-block px-2">{dataFormatHandler(sizeReceived)}</span>
+            Received:{" "}
+            <span className="inline-block px-2">
+              {dataFormatHandler(sizeReceived)}
+            </span>
           </p>
           {showWrittenBytes && (
             <p className="mt-2 text-gray-300">
-              Written: {dataFormatHandler(bytesWritten)} / {dataFormatHandler(totalSize)}
+              Written: {dataFormatHandler(bytesWritten)} /{" "}
+              {dataFormatHandler(totalSize)}
             </p>
           )}
           {showSpeed && (
@@ -272,12 +232,10 @@ export default function Send() {
               Speed: {transferRateFormatHandler(transferSpeed)}
             </p>
           )}
-          <div className="px-8 md:px-32 pt-6">
+          <div className="px-8 pt-6 md:px-32">
             <LinearProgress
               variant="determinate"
-              value={
-                totalSize ? Math.min((100 * progressBytes) / totalSize, 100) : 0
-              }
+              value={totalSize ? Math.min((100 * progressBytes) / totalSize, 100) : 0}
             />
           </div>
         </div>

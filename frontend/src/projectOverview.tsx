@@ -27,7 +27,7 @@ const sections = [
     title: "6. Core idea",
     text: "The server only helps both browsers find each other. The actual file remains peer-to-peer, which means there is no server-side file storage during the transfer.",
   },
-];
+] as const;
 
 export default function ProjectOverview() {
   return (

@@ -1,6 +1,7 @@
 import { create } from "zustand";
+import type { TransferActions, TransferState, TransferStore } from "./types/transfer";
 
-const createTransferState = () => ({
+const createTransferState = (): TransferState => ({
   isConnected: false,
   sizeReceived: 0,
   bytesWritten: 0,
@@ -14,7 +15,7 @@ const createTransferState = () => ({
   highestContiguousWrittenIndex: -1,
 });
 
-export const useTransferStore = create((set) => ({
+export const useTransferStore = create<TransferStore>((set) => ({
   ...createTransferState(),
   setConnected: (isConnected = true) => {
     set({ isConnected });
@@ -27,6 +28,24 @@ export const useTransferStore = create((set) => ({
   },
   setBytesWritten: (bytesWritten) => {
     set({ bytesWritten });
+  },
+  setTransferStatus: (transferStatus) => {
+    set({ transferStatus });
+  },
+  setWriteMode: (writeMode) => {
+    set({ writeMode });
+  },
+  setTransferError: (error) => {
+    set({ error });
+  },
+  setResolvedFileName: (resolvedFileName) => {
+    set({ resolvedFileName });
+  },
+  setTransferSize: (transferSize) => {
+    set({ transferSize });
+  },
+  setReorderMetrics: (reorderBufferSize, highestContiguousWrittenIndex) => {
+    set({ reorderBufferSize, highestContiguousWrittenIndex });
   },
   markReceiveStarted: () => {
     set((state) => ({
@@ -46,5 +65,7 @@ export const useTransferStore = create((set) => ({
     }));
   },
 }));
+
+export type { TransferActions, TransferState, TransferStore };
 
 export default useTransferStore;

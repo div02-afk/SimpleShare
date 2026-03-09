@@ -1,10 +1,10 @@
 import { motion, useAnimation } from "framer-motion";
 import { useEffect } from "react";
 import { Link } from "react-router-dom";
-import serverAddress from "./utils/serverLink";
 import GitHubLink from "./components/githublink";
+import serverAddress from "./utils/serverLink";
 
-const divStyle = "justify-center items-center flex rounded-3xl w-[150px]";
+const divStyle = "flex w-[150px] items-center justify-center rounded-3xl";
 const MotionLink = motion(Link);
 
 export default function Home() {
@@ -12,7 +12,7 @@ export default function Home() {
   const receiveControls = useAnimation();
 
   useEffect(() => {
-    fetch(serverAddress).catch(() => {});
+    void fetch(serverAddress).catch(() => {});
   }, []);
 
   return (
@@ -33,8 +33,12 @@ export default function Home() {
       <div className="flex items-center justify-center gap-7">
         <div
           className="p-4"
-          onMouseEnter={() => sendControls.start("hover")}
-          onMouseLeave={() => sendControls.start("initial")}
+          onMouseEnter={() => {
+            void sendControls.start("hover");
+          }}
+          onMouseLeave={() => {
+            void sendControls.start("initial");
+          }}
         >
           <MotionLink
             className={`${divStyle} bg-blue-500`}
@@ -57,14 +61,18 @@ export default function Home() {
             }}
             to="/send"
           >
-            <motion.div className="p-10 select-none">Send</motion.div>
+            <motion.div className="select-none p-10">Send</motion.div>
           </MotionLink>
         </div>
 
         <div
           className="p-4"
-          onMouseEnter={() => receiveControls.start("hover")}
-          onMouseLeave={() => receiveControls.start("initial")}
+          onMouseEnter={() => {
+            void receiveControls.start("hover");
+          }}
+          onMouseLeave={() => {
+            void receiveControls.start("initial");
+          }}
         >
           <MotionLink
             to="/receive"

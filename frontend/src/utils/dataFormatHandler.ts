@@ -1,4 +1,4 @@
-const dataFormatHandler = (size) => {
+const dataFormatHandler = (size: number): string => {
   if (!size) {
     return "0 B";
   }
@@ -9,7 +9,7 @@ const dataFormatHandler = (size) => {
 
   while (formattedSize >= 1024 && unitIndex < units.length - 1) {
     formattedSize /= 1024;
-    unitIndex++;
+    unitIndex += 1;
   }
 
   const roundedSize =
@@ -18,7 +18,7 @@ const dataFormatHandler = (size) => {
   return `${roundedSize} ${units[unitIndex]}`;
 };
 
-export const transferRateFormatHandler = (sizePerSecond) => {
+export const transferRateFormatHandler = (sizePerSecond: number): string => {
   return `${dataFormatHandler(sizePerSecond)}/s`;
 };
 
