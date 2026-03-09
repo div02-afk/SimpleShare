@@ -1,13 +1,13 @@
-import React, { useEffect, useState } from "react";
-import { Receiver } from "./utils/connection";
-import store from "./store";
+import { faCircleCheck, faCirclePlus } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faCirclePlus, faCircleCheck } from "@fortawesome/free-solid-svg-icons";
-import ToastNotification from "./components/toastNoti";
 import { LinearProgress } from "@mui/material";
-import Loader from "./components/loader";
-import dataFormatHandler from "./utils/dataFormatHandler";
+import { useEffect, useState } from "react";
 import GitHubLink from "./components/githublink";
+import Loader from "./components/loader";
+import ToastNotification from "./components/toastNoti";
+import store from "./store";
+import { Receiver } from "./utils/connection";
+import dataFormatHandler from "./utils/dataFormatHandler";
 
 export default function Send() {
   const [connection, setConnection] = useState(null);
@@ -18,7 +18,6 @@ export default function Send() {
   const [totalSize, setTotalSize] = useState(0);
   const [isLoading, setisLoading] = useState(false);
   const connect = () => {
-  
     console.log("Connecting",uniqueId);
     if (uniqueId.length < 4) return;
     console.log("Connecting");
@@ -26,16 +25,25 @@ export default function Send() {
     const conn = new Receiver(uniqueId);
     setConnection(conn);
   };
-  store.subscribe(() => {
-    setSizeReceived(store.getState().key.sizeReceived * 128);
-    setIsConnected(store.getState().key.isConnected);
-    if (store.getState().key.metadata) {
-      setTotalSize(Math.round(store.getState().key.metadata.size / 1024));
-    }
-    if (store.getState().key.isConnected) {
-      setisLoading(false);
-    }
-  });
+
+  useEffect(() => {
+    const syncFromStore = () => {
+      const { sizeReceived: receivedBytes, isConnected: connected, metadata } =
+        store.getState().key;
+
+      setSizeReceived(receivedBytes);
+      setIsConnected(connected);
+      setTotalSize(metadata?.size ?? 0);
+
+      if (connected) {
+        setisLoading(false);
+      }
+    };
+
+    syncFromStore();
+    const unsubscribe = store.subscribe(syncFromStore);
+    return unsubscribe;
+  }, []);
   useEffect(() => {
     if (isModalVisible) {
       setTimeout(() => {
@@ -48,11 +56,17 @@ export default function Send() {
   }, [isConnected]);
 
   useEffect(() => {
-    addEventListener("keypress", (e) => {
+    const handleKeyPress = (e) => {
       if (e.key === "Enter") {
         connect();
       }
-    });
+    };
+
+    addEventListener("keypress", handleKeyPress);
+
+    return () => {
+      removeEventListener("keypress", handleKeyPress);
+    };
   }, []);
   return (
     <div className="w-screen h-screen text-center bg-black text-white">
@@ -94,7 +108,7 @@ export default function Send() {
             <div className="p-32">
               <LinearProgress
                 variant="determinate"
-                value={(100 * sizeReceived) / totalSize}
+                value={totalSize ? Math.min((100 * sizeReceived) / totalSize, 100) : 0}
               />
             </div>
           </div>

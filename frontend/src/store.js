@@ -18,6 +18,11 @@ const keyReducer = (state = initialState, action) => {
             case 'SIZE_RECEIVED':
                 draft.sizeReceived = action.payload;
                 break;
+            case 'RESET_TRANSFER':
+                draft.isReceiving = false;
+                draft.sizeReceived = 0;
+                draft.metadata = null;
+                break;
             case 'ALL_CONNECTED':
                 draft.isConnected = true;
                 console.log("All connected");

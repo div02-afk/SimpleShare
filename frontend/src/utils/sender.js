@@ -149,6 +149,7 @@ export default class Sender extends Connection {
   }
 
   sendFile(file) {
+    store.dispatch({ type: "RESET_TRANSFER" });
     const blob = new Blob([file]);
     const CHUNK_SIZE = 1024 * 128; // 128KB
     let offset = 0;

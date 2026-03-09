@@ -15,6 +15,7 @@ export default class Receiver extends Connection {
   receivedChunks = [];
   receiving = false;
   sizeReceived = 0;
+  receivedChunkCount = 0;
   temp = false;
   noOfPeerConnections = 0;
   constructor(uniqueId) {
@@ -96,6 +97,11 @@ export default class Receiver extends Connection {
     this.socket.on("metadata", (metadata) => {
       console.log("metadata received", metadata);
       this.metadata = metadata;
+      this.receivedChunks = [];
+      this.receiving = false;
+      this.sizeReceived = 0;
+      this.receivedChunkCount = 0;
+      store.dispatch({ type: "RESET_TRANSFER" });
       store.dispatch({ type: "METADATA", payload: metadata });
       // console.log("metadata received", metadata.size / (1024 * 128));
       // this.receivedChunks = Array(MAth.max(Math.round(1+metadata.size / (1024 * 128))),1).fill(null);
@@ -167,7 +173,7 @@ export default class Receiver extends Connection {
           if (message.type === "the file sharing is completed") {
             const isCompletedDataReceived = setInterval(() => {
               console.log("no of chunks received:", this.sizeReceived);
-              if (message.index <= this.sizeReceived) {
+              if (message.index <= this.receivedChunkCount) {
                 console.log("All chunks received", this.receivedChunks.length);
                 const receivedBlob = new Blob(this.receivedChunks);
                 console.log("Blob received:", receivedBlob);
@@ -183,6 +189,8 @@ export default class Receiver extends Connection {
                 link.download = this.metadata.name || "temp.temp"; // Change the filename if needed
                 link.click();
                 URL.revokeObjectURL(url);
+                this.receivedChunkCount = 0;
+                this.sizeReceived = 0;
                 clearInterval(isCompletedDataReceived);
               }
             }, 500);
@@ -199,12 +207,13 @@ export default class Receiver extends Connection {
             if (!this.receivedChunks[index]) {
               // console.log("Received chunk", index, arrayBuffer.byteLength);
               this.receivedChunks[index] = arrayBuffer;
-              this.sizeReceived++;
+              this.receivedChunkCount++;
+              this.sizeReceived += arrayBuffer.byteLength;
               // console.log("Size received", this.sizeReceived);
-              if (this.sizeReceived % 9 == 0) {
-                
-                this.sendToSocket("received", {data : this.sizeReceived, room : this.uniqueId});
-              }
+              this.sendToSocket("received", {
+                data: this.sizeReceived,
+                room: this.uniqueId,
+              });
               if (this.receivedChunks.length == 1) {
                 store.dispatch({ type: "RECEIVE" });
               }

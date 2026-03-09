@@ -1,14 +1,14 @@
-import React, { useEffect, useState } from "react";
-import { Sender } from "./utils/connection";
-import Dropzone from "react-dropzone";
-import store from "./store";
-import { motion } from "framer-motion";
-import ToastNotification from "./components/toastNoti";
-import { Grid } from "react-loader-spinner";
-import Loader from "./components/loader";
-import dataFormatHandler from "./utils/dataFormatHandler";
 import { LinearProgress } from "@mui/material";
+import { motion } from "framer-motion";
+import { useEffect, useState } from "react";
+import Dropzone from "react-dropzone";
 import GitHubLink from "./components/githublink";
+import Loader from "./components/loader";
+import ToastNotification from "./components/toastNoti";
+import store from "./store";
+import { Sender } from "./utils/connection";
+import dataFormatHandler from "./utils/dataFormatHandler";
+
 const shortener = (str) => {
   if (str.length > 20) {
     return str.slice(0, 20) + "...";
@@ -37,10 +37,19 @@ export default function Send() {
     };
     checkUniqueId();
   }, []);
-  store.subscribe(() => {
-    setIsConnected(store.getState().key.isConnected);
-    setSizeReceived(store.getState().key.sizeReceived * 128);
-  });
+
+  useEffect(() => {
+    const syncFromStore = () => {
+      const { isConnected: connected, sizeReceived: receivedBytes } =
+        store.getState().key;
+      setIsConnected(connected);
+      setSizeReceived(receivedBytes);
+    };
+
+    syncFromStore();
+    const unsubscribe = store.subscribe(syncFromStore);
+    return unsubscribe;
+  }, []);
 
   useEffect(() => {
     if (isModalVisible) {
@@ -58,13 +67,12 @@ export default function Send() {
       </div>
     );
   }
-  const handleFileChange = (event) => {
-    setFile(event.target.files[0]);
-  };
+
   const handleSend = async () => {
     if (file) {
       setSending(true);
-      setTotalSize(file.size / 1024);
+      setSizeReceived(0);
+      setTotalSize(file.size);
       connection.sendFile(file);
     }
   };
@@ -114,7 +122,7 @@ export default function Send() {
                 <p className="text-center text-xl">{shortener(file.name)}</p>
               ) : (
                 <p className="text-center text-xl">
-                  Drag 'n' drop some files here, or click to select files
+                  {`Drag 'n' drop some files here, or click to select files`}
                 </p>
               )}
             </div>
@@ -139,8 +147,11 @@ export default function Send() {
           <div className=" m-auto mt-10 w-3/5 ">
             <LinearProgress
               variant="determinate"
-              value={(100 * sizeReceived) / totalSize}
+              value={totalSize ? Math.min((100 * sizeReceived) / totalSize, 100) : 0}
             />
+            <p className="mt-4 text-center">
+              {dataFormatHandler(sizeReceived)} / {dataFormatHandler(totalSize)}
+            </p>
           </div>
         </>
       )}

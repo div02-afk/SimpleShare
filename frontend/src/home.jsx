@@ -1,25 +1,43 @@
 import { motion, useAnimation } from "framer-motion";
+import { useEffect } from "react";
 import { Link } from "react-router-dom";
 import serverAddress from "./utils/serverLink";
 import GitHubLink from "./components/githublink";
 
-const divStyle = `justify-center items-center flex rounded-3xl w-[150px] `;
+const divStyle = "justify-center items-center flex rounded-3xl w-[150px]";
 const MotionLink = motion(Link);
 
 export default function Home() {
   const sendControls = useAnimation();
   const receiveControls = useAnimation();
-  fetch(serverAddress);
+
+  useEffect(() => {
+    fetch(serverAddress).catch(() => {});
+  }, []);
+
   return (
-    <>
-      <div className="flex h-screen select-none items-center text-2xl font-medium font-mono justify-center align-middle w-screen overflow-hidden bg-black gap-7">
+    <div className="relative flex h-screen w-screen select-none items-center justify-center overflow-hidden bg-black font-mono text-2xl font-medium text-white">
+      <div className="pointer-events-none absolute left-6 top-6 text-left">
+        <h1 className="text-3xl font-semibold">SimpleShare</h1>
+      </div>
+
+      <div className="absolute right-6 top-6">
+        <Link
+          to="/how-it-works"
+          className="rounded-md border border-white px-4 py-2 text-sm transition hover:bg-white hover:text-black"
+        >
+          How it works
+        </Link>
+      </div>
+
+      <div className="flex items-center justify-center gap-7">
         <div
           className="p-4"
           onMouseEnter={() => sendControls.start("hover")}
           onMouseLeave={() => sendControls.start("initial")}
         >
           <MotionLink
-            className={divStyle + "bg-blue-500"}
+            className={`${divStyle} bg-blue-500`}
             animate={sendControls}
             variants={{
               initial: {
@@ -42,13 +60,16 @@ export default function Home() {
             <motion.div className="p-10 select-none">Send</motion.div>
           </MotionLink>
         </div>
-      <div className="p-4"
-              onMouseEnter={() => receiveControls.start("hover")}
+
+        <div
+          className="p-4"
+          onMouseEnter={() => receiveControls.start("hover")}
           onMouseLeave={() => receiveControls.start("initial")}
-      >  <MotionLink
-          to="/receive"
-          className={divStyle + "bg-red-500"}
-             animate={receiveControls}
+        >
+          <MotionLink
+            to="/receive"
+            className={`${divStyle} bg-red-500`}
+            animate={receiveControls}
             variants={{
               initial: {
                 scale: 1,
@@ -65,11 +86,13 @@ export default function Home() {
                 transition: { duration: 0.6, type: "spring" },
               },
             }}
-        >
-          <motion.div className="p-10">Receive</motion.div>
-        </MotionLink></div>
-        <GitHubLink />
+          >
+            <motion.div className="p-10">Receive</motion.div>
+          </MotionLink>
+        </div>
       </div>
-    </>
+
+      <GitHubLink />
+    </div>
   );
 }
