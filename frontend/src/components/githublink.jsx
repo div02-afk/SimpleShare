@@ -9,16 +9,16 @@ export default function GitHubLink() {
       initial={{ opacity: 1,color: "#f1f1f1" }} 
       // animate={{ opacity: 1 }}
       whileHover={{
-        scale: 1.1,
+        scale: 1.2,
         color: "#f1f1f1",
-        transition: { duration: 0.1 },
+        transition: { duration: 0.3 },
       }}
-      className="fixed bottom-5 left-6 z-10 "
+      className="fixed bottom-5 left-6 z-10 cursor-pointer"
       onClick={async () => {
         window.open("https://github.com/div02-afk/p2p-fileshare", "_blank");
       }}
     >
-      <FontAwesomeIcon icon={faGithub} size="2x" />
+      <FontAwesomeIcon icon={faGithub} size="x" />
     </motion.div>
   );
 }
