@@ -28,6 +28,9 @@ export default class Sender extends Connection {
   receiverReadyTimeoutMs = 30000;
   nextConnectionIndex = 0;
   nextDataChannelIndex = 0;
+  bytesSent = 0;
+  bytesAcknowledged = 0;
+  inFlightWaiters = [];
 
   constructor() {
     super();
@@ -94,6 +97,8 @@ export default class Sender extends Connection {
       this.handleTransferComplete();
     });
     this.socket.on("received", (data) => {
+      this.bytesAcknowledged = data;
+      this.flushInFlightWaiters();
       useTransferStore.getState().setSizeReceived(data);
       if (this.currentMetadata && data >= this.currentMetadata.size) {
         useTransferStore.getState().updateTransfer({
@@ -114,6 +119,9 @@ export default class Sender extends Connection {
     });
     this.socket.on("disconnect", () => {
       this.clearReceiverReadyTimeout();
+      this.rejectInFlightWaiters(
+        new Error("Connection to the signaling server was lost.")
+      );
       if (this.pendingFile || this.currentMetadata) {
         useTransferStore.getState().updateTransfer({
           transferStatus: "failed",
@@ -206,6 +214,9 @@ export default class Sender extends Connection {
 
   handleReceiverError(data) {
     this.clearReceiverReadyTimeout();
+    this.rejectInFlightWaiters(
+      new Error(data?.error || "Receiver failed to start the download.")
+    );
     this.pendingFile = null;
     this.currentMetadata = null;
     useTransferStore.getState().updateTransfer({
@@ -248,6 +259,9 @@ export default class Sender extends Connection {
     const chunkSize = 1024 * 128;
     const totalChunks = Math.ceil(file.size / chunkSize);
 
+    this.bytesSent = 0;
+    this.bytesAcknowledged = 0;
+    this.flushInFlightWaiters();
     this.pendingFile = file;
     this.receiverReady = false;
     this.currentMetadata = {
@@ -289,30 +303,83 @@ export default class Sender extends Connection {
     );
   }
 
-  waitForCondition(predicate, intervalMs = 25) {
-    return new Promise((resolve) => {
-      if (predicate()) {
-        resolve();
-        return;
-      }
+  getInFlightBytes() {
+    return Math.max(0, this.bytesSent - this.bytesAcknowledged);
+  }
 
-      const interval = setInterval(() => {
-        if (predicate()) {
-          clearInterval(interval);
-          resolve();
-        }
-      }, intervalMs);
+  flushInFlightWaiters() {
+    const remainingWaiters = [];
+
+    for (const waiter of this.inFlightWaiters) {
+      if (this.getInFlightBytes() <= waiter.maxBytes) {
+        waiter.resolve();
+      } else {
+        remainingWaiters.push(waiter);
+      }
+    }
+
+    this.inFlightWaiters = remainingWaiters;
+  }
+
+  rejectInFlightWaiters(error) {
+    for (const waiter of this.inFlightWaiters) {
+      waiter.reject(error);
+    }
+
+    this.inFlightWaiters = [];
+  }
+
+  waitForInFlightBytes(maxBytes) {
+    if (this.getInFlightBytes() <= maxBytes) {
+      return Promise.resolve();
+    }
+
+    return new Promise((resolve, reject) => {
+      this.inFlightWaiters.push({ maxBytes, resolve, reject });
     });
   }
 
   async waitForGlobalDrain() {
-    if (this.getTotalBufferedAmount() <= TOTAL_BUFFERED_HIGH_WATER_MARK) {
+    if (this.getInFlightBytes() <= TOTAL_BUFFERED_HIGH_WATER_MARK) {
       return;
     }
 
-    await this.waitForCondition(
-      () => this.getTotalBufferedAmount() <= TOTAL_BUFFERED_LOW_WATER_MARK
-    );
+    await this.waitForInFlightBytes(TOTAL_BUFFERED_LOW_WATER_MARK);
+  }
+
+  waitForChannelDrain(channel) {
+    if (
+      channel.readyState !== "open" ||
+      channel.bufferedAmount <= DATA_CHANNEL_LOW_WATER_MARK
+    ) {
+      return Promise.resolve();
+    }
+
+    return new Promise((resolve, reject) => {
+      const handleLow = () => {
+        cleanup();
+        resolve();
+      };
+      const handleClose = () => {
+        cleanup();
+        reject(new Error("Data channel closed during transfer."));
+      };
+      const cleanup = () => {
+        channel.removeEventListener("bufferedamountlow", handleLow);
+        channel.removeEventListener("close", handleClose);
+      };
+
+      channel.addEventListener("bufferedamountlow", handleLow);
+      channel.addEventListener("close", handleClose);
+
+      if (
+        channel.readyState !== "open" ||
+        channel.bufferedAmount <= DATA_CHANNEL_LOW_WATER_MARK
+      ) {
+        cleanup();
+        resolve();
+      }
+    });
   }
 
   getNextOpenChannel() {
@@ -346,11 +413,7 @@ export default class Sender extends Connection {
     }
 
     if (channel.bufferedAmount > DATA_CHANNEL_HIGH_WATER_MARK) {
-      await this.waitForCondition(
-        () =>
-          channel.readyState === "open" &&
-          channel.bufferedAmount <= DATA_CHANNEL_LOW_WATER_MARK
-      );
+      await this.waitForChannelDrain(channel);
     }
 
     channel.send(frame);
@@ -371,6 +434,7 @@ export default class Sender extends Connection {
         const frame = this.createDataFrame(index, buffer);
 
         await this.sendFrame(frame);
+        this.bytesSent += buffer.byteLength;
         index++;
         offset += chunkSize;
       }
@@ -380,6 +444,7 @@ export default class Sender extends Connection {
         this.createCompleteFrame(this.currentMetadata?.totalChunks ?? index)
       );
     } catch (error) {
+      this.rejectInFlightWaiters(error);
       useTransferStore.getState().updateTransfer({
         transferStatus: "failed",
         error: error?.message || "Unable to send the file.",
