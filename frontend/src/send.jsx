@@ -1,13 +1,15 @@
 import { LinearProgress } from "@mui/material";
 import { motion } from "framer-motion";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Dropzone from "react-dropzone";
 import GitHubLink from "./components/githublink";
 import Loader from "./components/loader";
 import ToastNotification from "./components/toastNoti";
 import store from "./store";
 import { Sender } from "./utils/connection";
-import dataFormatHandler from "./utils/dataFormatHandler";
+import dataFormatHandler, {
+  transferRateFormatHandler,
+} from "./utils/dataFormatHandler";
 
 const shortener = (str) => {
   if (str.length > 20) {
@@ -16,15 +18,52 @@ const shortener = (str) => {
   return str;
 };
 
+const getTransferMessage = (transferStatus, writeMode, error) => {
+  if (transferStatus === "awaiting-receiver") {
+    return "Waiting for receiver to choose a destination";
+  }
+
+  if (transferStatus === "streaming-direct-write") {
+    if (writeMode === "blob-fallback") {
+      return "Receiver is buffering the download in-browser";
+    }
+
+    return "Receiver is saving directly to a file";
+  }
+
+  if (transferStatus === "fallback-buffering") {
+    return "Receiver is buffering the download in-browser";
+  }
+
+  if (transferStatus === "completed") {
+    return "Transfer completed";
+  }
+
+  if (transferStatus === "finalizing-write") {
+    return "Receiver has all bytes and is finalizing the saved file";
+  }
+
+  if (transferStatus === "failed") {
+    return error || "Transfer failed";
+  }
+
+  return null;
+};
+
 export default function Send() {
   const [connection, setConnection] = useState(null);
   const [uniqueId, setUniqueId] = useState("");
   const [file, setFile] = useState(null);
   const [isConnected, setIsConnected] = useState(false);
   const [isModalVisible, setIsModalVisible] = useState(false);
-  const [isSending, setSending] = useState(false);
   const [sizeReceived, setSizeReceived] = useState(0);
-  const [totalSize, setTotalSize] = useState(0);
+  const [transferStatus, setTransferStatus] = useState("idle");
+  const [transferError, setTransferError] = useState(null);
+  const [writeMode, setWriteMode] = useState(null);
+  const [transferSize, setTransferSize] = useState(0);
+  const [transferSpeed, setTransferSpeed] = useState(0);
+  const sizeReceivedRef = useRef(0);
+
   useEffect(() => {
     const conn = new Sender();
     setConnection(conn);
@@ -40,10 +79,21 @@ export default function Send() {
 
   useEffect(() => {
     const syncFromStore = () => {
-      const { isConnected: connected, sizeReceived: receivedBytes } =
-        store.getState().key;
+      const {
+        isConnected: connected,
+        sizeReceived: receivedBytes,
+        transferSize: nextTransferSize,
+        transferStatus: nextTransferStatus,
+        error,
+        writeMode: nextWriteMode,
+      } = store.getState().key;
+
       setIsConnected(connected);
       setSizeReceived(receivedBytes);
+      setTransferSize(nextTransferSize);
+      setTransferStatus(nextTransferStatus);
+      setTransferError(error);
+      setWriteMode(nextWriteMode);
     };
 
     syncFromStore();
@@ -59,6 +109,43 @@ export default function Send() {
     }
   }, [isModalVisible]);
 
+  useEffect(() => {
+    sizeReceivedRef.current = sizeReceived;
+  }, [sizeReceived]);
+
+  useEffect(() => {
+    if (
+      transferStatus === "idle" ||
+      transferStatus === "awaiting-receiver" ||
+      transferStatus === "finalizing-write" ||
+      transferStatus === "completed" ||
+      transferStatus === "failed"
+    ) {
+      setTransferSpeed(0);
+      return;
+    }
+
+    let previousBytes = sizeReceivedRef.current;
+    let previousTime = Date.now();
+
+    const interval = setInterval(() => {
+      const now = Date.now();
+      const deltaBytes = sizeReceivedRef.current - previousBytes;
+      const deltaTime = now - previousTime;
+
+      setTransferSpeed(
+        deltaTime > 0 ? Math.max(0, (deltaBytes * 1000) / deltaTime) : 0
+      );
+
+      previousBytes = sizeReceivedRef.current;
+      previousTime = now;
+    }, 1000);
+
+    return () => {
+      clearInterval(interval);
+    };
+  }, [transferStatus]);
+
   if (!uniqueId) {
     return (
       <div className="w-screen h-screen bg-black font-mono text-center text-white text-2xl flex flex-col justify-center items-center gap-6">
@@ -68,18 +155,29 @@ export default function Send() {
     );
   }
 
-  const handleSend = async () => {
-    if (file) {
-      setSending(true);
+  const handleSend = () => {
+    if (file && connection) {
       setSizeReceived(0);
-      setTotalSize(file.size);
       connection.sendFile(file);
     }
   };
+
   const copyUniqueID = () => {
     navigator.clipboard.writeText(connection.uniqueId);
     setIsModalVisible(true);
   };
+
+  const transferMessage = getTransferMessage(
+    transferStatus,
+    writeMode,
+    transferError
+  );
+  const totalSize = transferSize || file?.size || 0;
+  const showProgress = transferStatus !== "idle";
+  const showSpeed =
+    transferStatus === "streaming-direct-write" ||
+    transferStatus === "fallback-buffering";
+
   return (
     <div className="bg-black text-white h-screen pt-2 font-mono">
       <div className="mb-20">
@@ -122,7 +220,7 @@ export default function Send() {
                 <p className="text-center text-xl">{shortener(file.name)}</p>
               ) : (
                 <p className="text-center text-xl">
-                  {`Drag 'n' drop some files here, or click to select files`}
+                  Drag 'n' drop some files here, or click to select files
                 </p>
               )}
             </div>
@@ -135,33 +233,40 @@ export default function Send() {
           disabled={!isConnected || !file}
           whileHover={isConnected && file && { scale: 1.5 }}
           className="bg-blue-500 p-2 rounded-2xl disabled:bg-blue-300 px-10"
-          onClick={() => {
-            handleSend();
-          }}
+          onClick={handleSend}
         >
           Send file
         </motion.button>
       </div>
-      {isSending && (
-        <>
-          <div className=" m-auto mt-10 w-3/5 ">
-            <LinearProgress
-              variant="determinate"
-              value={totalSize ? Math.min((100 * sizeReceived) / totalSize, 100) : 0}
-            />
-            <p className="mt-4 text-center">
-              {dataFormatHandler(sizeReceived)} / {dataFormatHandler(totalSize)}
+      {showProgress && (
+        <div className="m-auto mt-10 w-3/5">
+          <LinearProgress
+            variant="determinate"
+            value={
+              totalSize ? Math.min((100 * sizeReceived) / totalSize, 100) : 0
+            }
+          />
+          <p className="mt-4 text-center">
+            {dataFormatHandler(sizeReceived)} / {dataFormatHandler(totalSize)}
+          </p>
+          {showSpeed && (
+            <p className="mt-2 text-center text-gray-300">
+              Speed: {transferRateFormatHandler(transferSpeed)}
             </p>
-          </div>
-        </>
+          )}
+          {transferMessage && (
+            <p
+              className={`mt-3 text-center ${
+                transferStatus === "failed" ? "text-red-400" : "text-gray-300"
+              }`}
+            >
+              {transferMessage}
+            </p>
+          )}
+        </div>
       )}
       <GitHubLink />
-      {
-        <ToastNotification
-          isModalVisible={isModalVisible}
-          text="Share Code copied"
-        />
-      }
+      <ToastNotification isModalVisible={isModalVisible} text="Share Code copied" />
     </div>
   );
 }

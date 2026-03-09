@@ -44,6 +44,18 @@ io.on("connection", (socket) => {
   socket.on("metadata", (data) => {
     socket.to(data.room).emit("metadata", data);
   });
+  socket.on("receiver-ready", (data) => {
+    socket.to(data.room).emit("receiver-ready", data);
+  });
+  socket.on("receiver-error", (data) => {
+    socket.to(data.room).emit("receiver-error", data);
+  });
+  socket.on("receiver-finalizing", (data) => {
+    socket.to(data.room).emit("receiver-finalizing", data);
+  });
+  socket.on("transfer-complete", (data) => {
+    socket.to(data.room).emit("transfer-complete", data);
+  });
   socket.on("received", (data) => {
     socket.to(data.room).emit("received", data.data);
   });

@@ -1,8 +1,13 @@
 import { io } from "socket.io-client";
 import Connection from "./Connectionclass.js";
 import serverAddress from "./serverLink.js";
-import splitFile from "./fileSplitter.js";
 import store from "../store.js";
+
+const DATA_CHANNEL_HIGH_WATER_MARK = 512 * 1024;
+const DATA_CHANNEL_LOW_WATER_MARK = 256 * 1024;
+const TOTAL_BUFFERED_HIGH_WATER_MARK = 8 * 1024 * 1024;
+const TOTAL_BUFFERED_LOW_WATER_MARK = 4 * 1024 * 1024;
+
 export default class Sender extends Connection {
   peerConnection = null;
   temp = 0;
@@ -16,6 +21,14 @@ export default class Sender extends Connection {
   dataChannel2 = null;
   partReceived = false;
   noOfPeerConnections = 0;
+  pendingFile = null;
+  currentMetadata = null;
+  receiverReady = false;
+  receiverReadyTimeout = null;
+  receiverReadyTimeoutMs = 30000;
+  nextConnectionIndex = 0;
+  nextDataChannelIndex = 0;
+
   constructor() {
     super();
     this.noOfPeerConnections = 12;
@@ -30,22 +43,18 @@ export default class Sender extends Connection {
     this.initiatePeerConnectionListners();
     this.initiateSocketListeners();
   }
+
   initiatePeerConnectionListners() {
     for (let i = 0; i < this.peerConnections.length; i++) {
       this.peerConnections[i].onicecandidate = (event) => {
         this.handleIceCandidate(event, "sender", i);
       };
       this.peerConnections[i].oniceconnectionstatechange = () => {
-        // console.log(
-        //   `ICE connection state for ${i}:`,
-        //   this.peerConnections[i].iceConnectionState
-        // );
         if (
           this.peerConnections[i].iceConnectionState === "connected" ||
           this.peerConnections[i].iceConnectionState === "completed"
         ) {
           store.dispatch({ type: "CONNECT" });
-          // console.log(`Peer connection ${i} is established`);
           this.temp++;
           if (this.temp == this.noOfPeerConnections) {
             store.dispatch({ type: "ALL_CONNECTED" });
@@ -54,6 +63,7 @@ export default class Sender extends Connection {
       };
     }
   }
+
   createDataChannels(noOfDataChannels, connectionId) {
     for (let i = 0; i < noOfDataChannels; i++) {
       const dataChannel = this.peerConnections[connectionId].createDataChannel(
@@ -61,35 +71,62 @@ export default class Sender extends Connection {
       );
 
       this.dataChannels[connectionId].push(dataChannel);
-      dataChannel.onopen = () => {
-        // console.log("Data channel is open");
-      };
-      dataChannel.onclose = () => {
-        
-        // console.log("Data channel is closed")
-      };
+      dataChannel.binaryType = "arraybuffer";
+      dataChannel.bufferedAmountLowThreshold = DATA_CHANNEL_LOW_WATER_MARK;
+      dataChannel.onopen = () => {};
+      dataChannel.onclose = () => {};
     }
-    // console.log(this.dataChannels[connectionId][0]);
   }
 
   initiateSocketListeners() {
     this.socket.on("answer", (data) => {
-      // console.log("answer received for", data.connectionId);
       this.handleAnswer(data);
+    });
+    this.socket.on("receiver-ready", (data) => {
+      this.handleReceiverReady(data);
+    });
+    this.socket.on("receiver-error", (data) => {
+      this.handleReceiverError(data);
+    });
+    this.socket.on("receiver-finalizing", () => {
+      this.handleReceiverFinalizing();
+    });
+    this.socket.on("transfer-complete", () => {
+      this.handleTransferComplete();
     });
     this.socket.on("received", (data) => {
       store.dispatch({ type: "SIZE_RECEIVED", payload: data });
+      if (this.currentMetadata && data >= this.currentMetadata.size) {
+        store.dispatch({
+          type: "TRANSFER_UPDATE",
+          payload: {
+            transferStatus: "finalizing-write",
+            error: null,
+          },
+        });
+      }
     });
     this.socket.on("room-full", () => {
       this.handleRoomFull();
     });
     this.socket.on("ice-candidate", (data) => {
-      // console.log("ice candidate received for", data.connectionId);
       const candidate = data.candidate;
       const connectionId = data.connectionId;
       this.peerConnections[connectionId].addIceCandidate(
         new RTCIceCandidate(candidate)
       );
+    });
+    this.socket.on("disconnect", () => {
+      this.clearReceiverReadyTimeout();
+      if (this.pendingFile || this.currentMetadata) {
+        store.dispatch({
+          type: "TRANSFER_UPDATE",
+          payload: {
+            transferStatus: "failed",
+            error: "Connection to the signaling server was lost.",
+          },
+        });
+      }
     });
   }
 
@@ -110,7 +147,6 @@ export default class Sender extends Connection {
       await this.peerConnections[connectionId].setRemoteDescription(
         new RTCSessionDescription(answer)
       );
-      // console.log(this.peerConnections[connectionId].iceConnectionState);
     } else {
       console.error(
         "Peer connection not in correct state to set remote description:",
@@ -118,6 +154,7 @@ export default class Sender extends Connection {
       );
     }
   }
+
   async createOffer(connectionId) {
     const offer = await this.peerConnections[connectionId].createOffer({
       offerToReceiveAudio: true,
@@ -129,14 +166,12 @@ export default class Sender extends Connection {
       offer: offer,
       connectionId: connectionId,
     });
-    // console.log("offer sent for", connectionId);
     return offer;
   }
 
   async getRandomIDandJoinRoom() {
     try {
       const response = await fetch(serverAddress + "/random");
-      // console.log("response", response);
       this.uniqueId = await response.text();
       this.sendToSocket("join-room", this.uniqueId);
       this.isUniqueIDSet = true;
@@ -148,115 +183,235 @@ export default class Sender extends Connection {
     }
   }
 
+  clearReceiverReadyTimeout() {
+    if (this.receiverReadyTimeout) {
+      clearTimeout(this.receiverReadyTimeout);
+      this.receiverReadyTimeout = null;
+    }
+  }
+
+  handleReceiverReady(data) {
+    if (!this.pendingFile) {
+      return;
+    }
+
+    this.receiverReady = true;
+    this.clearReceiverReadyTimeout();
+    store.dispatch({
+      type: "TRANSFER_UPDATE",
+      payload: {
+        transferStatus:
+          data?.writeMode === "blob-fallback"
+            ? "fallback-buffering"
+            : "streaming-direct-write",
+        writeMode: data?.writeMode ?? null,
+        error: null,
+      },
+    });
+
+    const fileToSend = this.pendingFile;
+    this.pendingFile = null;
+    void this.beginTransfer(fileToSend);
+  }
+
+  handleReceiverError(data) {
+    this.clearReceiverReadyTimeout();
+    this.pendingFile = null;
+    this.currentMetadata = null;
+    store.dispatch({
+      type: "TRANSFER_UPDATE",
+      payload: {
+        transferStatus: "failed",
+        error: data?.error || "Receiver failed to start the download.",
+      },
+    });
+  }
+
+  handleReceiverFinalizing() {
+    if (!this.currentMetadata) {
+      return;
+    }
+
+    store.dispatch({
+      type: "TRANSFER_UPDATE",
+      payload: {
+        transferStatus: "finalizing-write",
+        error: null,
+      },
+    });
+  }
+
+  handleTransferComplete() {
+    if (!this.currentMetadata) {
+      return;
+    }
+
+    this.currentMetadata = null;
+    store.dispatch({
+      type: "TRANSFER_UPDATE",
+      payload: {
+        transferStatus: "completed",
+        error: null,
+      },
+    });
+  }
+
   sendFile(file) {
+    if (!file) {
+      return;
+    }
+
+    this.clearReceiverReadyTimeout();
     store.dispatch({ type: "RESET_TRANSFER" });
-    const blob = new Blob([file]);
-    const CHUNK_SIZE = 1024 * 128; // 128KB
-    let offset = 0;
-    let count = 20;
-    let index = 0;
-    let dataChannelNumber = 0;
-    const metadata = {
+
+    const chunkSize = 1024 * 128;
+    const totalChunks = Math.ceil(file.size / chunkSize);
+
+    this.pendingFile = file;
+    this.receiverReady = false;
+    this.currentMetadata = {
       room: this.uniqueId,
       type: file.type,
       size: file.size,
       name: file.name,
-    };
-    let finalDataToSend = [];
-
-    this.sendToSocket("metadata", metadata);
-    // console.log("Sending file of size", blob.size / 1024, "KB");
-    const sendNextChunk = () => {
-      const slice = blob.slice(offset, offset + CHUNK_SIZE);
-      const reader = new FileReader();
-
-      reader.onload = (event) => {
-        if (event.target.readyState === FileReader.DONE) {
-          dataChannelNumber =
-            (dataChannelNumber + 1) % this.dataChannels.length;
-
-          const arrayBuffer = this.arrayBufferToBase64(event.target.result);
-          const dataToSend = JSON.stringify({
-            type: "data",
-            data: arrayBuffer,
-            dataChannelNumber: dataChannelNumber,
-            index: index,
-          });
-          finalDataToSend.push(dataToSend);
-          if (finalDataToSend.length > 500) {
-            this.dataBalancer(finalDataToSend);
-            finalDataToSend = [];
-          }
-          index++;
-          count--;
-          offset += CHUNK_SIZE;
-          if (offset < blob.size) {
-            sendNextChunk();
-          } else {
-            finalDataToSend.push(
-              JSON.stringify({
-                type: "the file sharing is completed",
-                index: index,
-              })
-            );
-            // console.log(
-            //   "final length",
-            //   finalDataToSend[finalDataToSend.length - 1]
-            // );
-            this.dataBalancer(finalDataToSend);
-          }
-        }
-      };
-
-      reader.readAsArrayBuffer(slice);
+      chunkSize,
+      totalChunks,
     };
 
-    sendNextChunk();
+    store.dispatch({
+      type: "TRANSFER_UPDATE",
+      payload: {
+        transferStatus: "awaiting-receiver",
+        transferSize: file.size,
+        error: null,
+      },
+    });
+
+    this.sendToSocket("metadata", this.currentMetadata);
+    this.receiverReadyTimeout = setTimeout(() => {
+      if (!this.receiverReady) {
+        this.pendingFile = null;
+        this.currentMetadata = null;
+        store.dispatch({
+          type: "TRANSFER_UPDATE",
+          payload: {
+            transferStatus: "failed",
+            error: "Receiver did not choose a destination in time.",
+          },
+        });
+      }
+    }, this.receiverReadyTimeoutMs);
   }
 
-  dataBalancer(finalDataToSend) {
-    // console.log("final length :", finalDataToSend.length);
-    let start = 0;
-    // console.log(finalDataToSend.length);
-    let step = Math.max(
-      Math.floor(finalDataToSend.length / this.noOfPeerConnections),
-      1
+  getAllDataChannels() {
+    return this.dataChannels.flat();
+  }
+
+  getTotalBufferedAmount() {
+    return this.getAllDataChannels().reduce(
+      (total, channel) => total + channel.bufferedAmount,
+      0
     );
-    let end = step;
-    for (let i = 0; i < this.noOfPeerConnections; i++) {
-      this.sendDataToDataChannels(finalDataToSend, start, end, i);
-      if (end == finalDataToSend.length - 1) {
-        break;
-      }
-      start = end;
-      end = Math.min(end + step, finalDataToSend.length - 1);
-    }
-    end = finalDataToSend.length;
-    this.sendDataToDataChannels(finalDataToSend, start, end, 0);
   }
 
-  async sendDataToDataChannels(data, start, end, connectionId) {
-    let dataChannelNumber = 0;
-
-    for (let i = start; i < end; i++) {
-      dataChannelNumber = (dataChannelNumber + 1) % 10;
-      if (
-        this.dataChannels[connectionId][dataChannelNumber].bufferedAmount >
-        14 * 1024 * 1024
-      ) {
-        const whenReady = setInterval(() => {
-          if (
-            this.dataChannels[connectionId][dataChannelNumber].bufferedAmount <
-            10 * 1024 * 1024
-          ) {
-            this.dataChannels[connectionId][dataChannelNumber].send(data[i]);
-            clearInterval(whenReady);
-          }
-        }, 50);
-        whenReady;
-      } else {
-        this.dataChannels[connectionId][dataChannelNumber].send(data[i]);
+  waitForCondition(predicate, intervalMs = 25) {
+    return new Promise((resolve) => {
+      if (predicate()) {
+        resolve();
+        return;
       }
+
+      const interval = setInterval(() => {
+        if (predicate()) {
+          clearInterval(interval);
+          resolve();
+        }
+      }, intervalMs);
+    });
+  }
+
+  async waitForGlobalDrain() {
+    if (this.getTotalBufferedAmount() <= TOTAL_BUFFERED_HIGH_WATER_MARK) {
+      return;
+    }
+
+    await this.waitForCondition(
+      () => this.getTotalBufferedAmount() <= TOTAL_BUFFERED_LOW_WATER_MARK
+    );
+  }
+
+  getNextOpenChannel() {
+    const connectionCount = this.dataChannels.length;
+
+    for (let connectionOffset = 0; connectionOffset < connectionCount; connectionOffset++) {
+      const connectionId =
+        (this.nextConnectionIndex + connectionOffset) % connectionCount;
+      const channels = this.dataChannels[connectionId];
+
+      for (let channelOffset = 0; channelOffset < channels.length; channelOffset++) {
+        const channelIndex =
+          (this.nextDataChannelIndex + channelOffset) % channels.length;
+        const channel = channels[channelIndex];
+
+        if (channel.readyState === "open") {
+          this.nextConnectionIndex = (connectionId + 1) % connectionCount;
+          this.nextDataChannelIndex = (channelIndex + 1) % channels.length;
+          return channel;
+        }
+      }
+    }
+
+    return null;
+  }
+
+  async sendFrame(frame) {
+    const channel = this.getNextOpenChannel();
+    if (!channel) {
+      throw new Error("No open data channels are available for transfer.");
+    }
+
+    if (channel.bufferedAmount > DATA_CHANNEL_HIGH_WATER_MARK) {
+      await this.waitForCondition(
+        () =>
+          channel.readyState === "open" &&
+          channel.bufferedAmount <= DATA_CHANNEL_LOW_WATER_MARK
+      );
+    }
+
+    channel.send(frame);
+  }
+
+  async beginTransfer(file) {
+    const blob = new Blob([file]);
+    const chunkSize = this.currentMetadata?.chunkSize ?? 1024 * 128;
+    let offset = 0;
+    let index = 0;
+
+    try {
+      while (offset < blob.size) {
+        await this.waitForGlobalDrain();
+
+        const slice = blob.slice(offset, offset + chunkSize);
+        const buffer = await slice.arrayBuffer();
+        const frame = this.createDataFrame(index, buffer);
+
+        await this.sendFrame(frame);
+        index++;
+        offset += chunkSize;
+      }
+
+      await this.waitForGlobalDrain();
+      await this.sendFrame(
+        this.createCompleteFrame(this.currentMetadata?.totalChunks ?? index)
+      );
+    } catch (error) {
+      store.dispatch({
+        type: "TRANSFER_UPDATE",
+        payload: {
+          transferStatus: "failed",
+          error: error?.message || "Unable to send the file.",
+        },
+      });
     }
   }
 }

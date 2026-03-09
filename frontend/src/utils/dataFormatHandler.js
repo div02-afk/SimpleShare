@@ -18,4 +18,8 @@ const dataFormatHandler = (size) => {
   return `${roundedSize} ${units[unitIndex]}`;
 };
 
+export const transferRateFormatHandler = (sizePerSecond) => {
+  return `${dataFormatHandler(sizePerSecond)}/s`;
+};
+
 export default dataFormatHandler;
