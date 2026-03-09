@@ -1,7 +1,7 @@
 import { io } from "socket.io-client";
+import { useTransferStore } from "../store.js";
 import Connection from "./Connectionclass.js";
 import serverAddress from "./serverLink.js";
-import store from "../store.js";
 
 const DIRECT_WRITE_STATUS = "streaming-direct-write";
 const FALLBACK_STATUS = "fallback-buffering";
@@ -109,15 +109,12 @@ export default class Receiver extends Connection {
   }
 
   syncTransferState(overrides = {}) {
-    store.dispatch({
-      type: "TRANSFER_UPDATE",
-      payload: {
-        resolvedFileName: this.transferSession.resolvedFileName,
-        reorderBufferSize: this.transferSession.pendingChunksByIndex.size,
-        highestContiguousWrittenIndex: this.transferSession.nextChunkToWrite - 1,
-        bytesWritten: this.transferSession.bytesWritten,
-        ...overrides,
-      },
+    useTransferStore.getState().updateTransfer({
+      resolvedFileName: this.transferSession.resolvedFileName,
+      reorderBufferSize: this.transferSession.pendingChunksByIndex.size,
+      highestContiguousWrittenIndex: this.transferSession.nextChunkToWrite - 1,
+      bytesWritten: this.transferSession.bytesWritten,
+      ...overrides,
     });
   }
 
@@ -208,7 +205,7 @@ export default class Receiver extends Connection {
         ) {
           this.temp++;
           if (this.temp == this.noOfPeerConnections) {
-            store.dispatch({ type: "ALL_CONNECTED" });
+            useTransferStore.getState().setConnected(true);
           }
         }
       };
@@ -242,8 +239,8 @@ export default class Receiver extends Connection {
     await this.resetTransferSession(false);
     this.metadata = metadata;
     this.transferSession = this.createTransferSession(metadata);
-    store.dispatch({ type: "RESET_TRANSFER" });
-    store.dispatch({ type: "METADATA", payload: metadata });
+    useTransferStore.getState().resetTransfer();
+    useTransferStore.getState().setMetadata(metadata);
     this.syncTransferState({
       transferStatus: "awaiting-save",
       writeMode: null,
@@ -302,10 +299,9 @@ export default class Receiver extends Connection {
       );
       await this.transferSession.writableStream.write(chunk);
       this.transferSession.bytesWritten += chunk.byteLength;
-      store.dispatch({
-        type: "BYTES_WRITTEN",
-        payload: this.transferSession.bytesWritten,
-      });
+      useTransferStore
+        .getState()
+        .setBytesWritten(this.transferSession.bytesWritten);
       this.transferSession.nextChunkToWrite++;
     }
 
@@ -366,10 +362,9 @@ export default class Receiver extends Connection {
       link.click();
       URL.revokeObjectURL(url);
       this.transferSession.bytesWritten = this.transferSession.receivedBytes;
-      store.dispatch({
-        type: "BYTES_WRITTEN",
-        payload: this.transferSession.bytesWritten,
-      });
+      useTransferStore
+        .getState()
+        .setBytesWritten(this.transferSession.bytesWritten);
     }
 
     this.transferSession.pendingChunksByIndex.clear();
@@ -425,9 +420,9 @@ export default class Receiver extends Connection {
     this.transferSession.writeMode = writeMode;
     this.transferSession.status = "failed";
 
-    store.dispatch({ type: "RESET_TRANSFER" });
+    useTransferStore.getState().resetTransfer();
     if (metadataToPreserve) {
-      store.dispatch({ type: "METADATA", payload: metadataToPreserve });
+      useTransferStore.getState().setMetadata(metadataToPreserve);
     }
     this.syncTransferState({
       transferStatus: "failed",
@@ -449,7 +444,7 @@ export default class Receiver extends Connection {
 
     this.transferSession = this.createTransferSession();
     if (resetStore) {
-      store.dispatch({ type: "RESET_TRANSFER" });
+      useTransferStore.getState().resetTransfer();
     }
   }
 
@@ -500,11 +495,8 @@ export default class Receiver extends Connection {
     this.transferSession.receivedChunkCount++;
     this.transferSession.receivedBytes += byteLength;
 
-    store.dispatch({ type: "RECEIVE" });
-    store.dispatch({
-      type: "SIZE_RECEIVED",
-      payload: this.transferSession.receivedBytes,
-    });
+    useTransferStore.getState().markReceiveStarted();
+    useTransferStore.getState().setSizeReceived(this.transferSession.receivedBytes);
     this.sendToSocket("received", {
       data: this.transferSession.receivedBytes,
       room: this.uniqueId,

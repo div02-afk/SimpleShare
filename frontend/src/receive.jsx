@@ -4,8 +4,8 @@ import { LinearProgress } from "@mui/material";
 import { useEffect, useRef, useState } from "react";
 import GitHubLink from "./components/githublink";
 import Loader from "./components/loader";
+import { useTransferStore } from "./store";
 import ToastNotification from "./components/toastNoti";
-import store from "./store";
 import { Receiver } from "./utils/connection";
 import dataFormatHandler, {
   transferRateFormatHandler,
@@ -46,20 +46,21 @@ const getReceiverMessage = (transferStatus, writeMode, error) => {
 };
 
 export default function Send() {
+  const sizeReceived = useTransferStore((state) => state.sizeReceived);
+  const bytesWritten = useTransferStore((state) => state.bytesWritten);
+  const isConnected = useTransferStore((state) => state.isConnected);
+  const metadata = useTransferStore((state) => state.metadata);
+  const transferStatus = useTransferStore((state) => state.transferStatus);
+  const writeMode = useTransferStore((state) => state.writeMode);
+  const transferError = useTransferStore((state) => state.error);
+  const resolvedFileName = useTransferStore(
+    (state) => state.resolvedFileName
+  );
   const [connection, setConnection] = useState(null);
   const [uniqueId, setUniqueId] = useState("");
-  const [sizeReceived, setSizeReceived] = useState(0);
-  const [bytesWritten, setBytesWritten] = useState(0);
-  const [isConnected, setIsConnected] = useState(false);
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [isTransferCompleteVisible, setIsTransferCompleteVisible] = useState(false);
-  const [totalSize, setTotalSize] = useState(0);
   const [isLoading, setisLoading] = useState(false);
-  const [metadata, setMetadata] = useState(null);
-  const [transferStatus, setTransferStatus] = useState("idle");
-  const [writeMode, setWriteMode] = useState(null);
-  const [transferError, setTransferError] = useState(null);
-  const [resolvedFileName, setResolvedFileName] = useState(null);
   const [transferSpeed, setTransferSpeed] = useState(0);
   const sizeReceivedRef = useRef(0);
 
@@ -79,37 +80,10 @@ export default function Send() {
   };
 
   useEffect(() => {
-    const syncFromStore = () => {
-      const {
-        sizeReceived: receivedBytes,
-        bytesWritten: nextBytesWritten,
-        isConnected: connected,
-        metadata: nextMetadata,
-        transferStatus: nextTransferStatus,
-        writeMode: nextWriteMode,
-        error,
-        resolvedFileName: nextResolvedFileName,
-      } = store.getState().key;
-
-      setSizeReceived(receivedBytes);
-      setBytesWritten(nextBytesWritten);
-      setIsConnected(connected);
-      setTotalSize(nextMetadata?.size ?? 0);
-      setMetadata(nextMetadata);
-      setTransferStatus(nextTransferStatus);
-      setWriteMode(nextWriteMode);
-      setTransferError(error);
-      setResolvedFileName(nextResolvedFileName);
-
-      if (connected) {
-        setisLoading(false);
-      }
-    };
-
-    syncFromStore();
-    const unsubscribe = store.subscribe(syncFromStore);
-    return unsubscribe;
-  }, []);
+    if (isConnected) {
+      setisLoading(false);
+    }
+  }, [isConnected]);
 
   useEffect(() => {
     if (isModalVisible) {
@@ -192,6 +166,7 @@ export default function Send() {
     writeMode,
     transferError
   );
+  const totalSize = metadata?.size ?? 0;
   const canPickDirectFile = connection?.supportsDirectFileWrite?.() ?? false;
   const canStartTransfer =
     metadata &&

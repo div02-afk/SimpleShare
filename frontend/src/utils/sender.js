@@ -1,7 +1,7 @@
 import { io } from "socket.io-client";
+import { useTransferStore } from "../store.js";
 import Connection from "./Connectionclass.js";
 import serverAddress from "./serverLink.js";
-import store from "../store.js";
 
 const DATA_CHANNEL_HIGH_WATER_MARK = 512 * 1024;
 const DATA_CHANNEL_LOW_WATER_MARK = 256 * 1024;
@@ -54,10 +54,9 @@ export default class Sender extends Connection {
           this.peerConnections[i].iceConnectionState === "connected" ||
           this.peerConnections[i].iceConnectionState === "completed"
         ) {
-          store.dispatch({ type: "CONNECT" });
           this.temp++;
           if (this.temp == this.noOfPeerConnections) {
-            store.dispatch({ type: "ALL_CONNECTED" });
+            useTransferStore.getState().setConnected(true);
           }
         }
       };
@@ -95,14 +94,11 @@ export default class Sender extends Connection {
       this.handleTransferComplete();
     });
     this.socket.on("received", (data) => {
-      store.dispatch({ type: "SIZE_RECEIVED", payload: data });
+      useTransferStore.getState().setSizeReceived(data);
       if (this.currentMetadata && data >= this.currentMetadata.size) {
-        store.dispatch({
-          type: "TRANSFER_UPDATE",
-          payload: {
-            transferStatus: "finalizing-write",
-            error: null,
-          },
+        useTransferStore.getState().updateTransfer({
+          transferStatus: "finalizing-write",
+          error: null,
         });
       }
     });
@@ -119,12 +115,9 @@ export default class Sender extends Connection {
     this.socket.on("disconnect", () => {
       this.clearReceiverReadyTimeout();
       if (this.pendingFile || this.currentMetadata) {
-        store.dispatch({
-          type: "TRANSFER_UPDATE",
-          payload: {
-            transferStatus: "failed",
-            error: "Connection to the signaling server was lost.",
-          },
+        useTransferStore.getState().updateTransfer({
+          transferStatus: "failed",
+          error: "Connection to the signaling server was lost.",
         });
       }
     });
@@ -197,16 +190,13 @@ export default class Sender extends Connection {
 
     this.receiverReady = true;
     this.clearReceiverReadyTimeout();
-    store.dispatch({
-      type: "TRANSFER_UPDATE",
-      payload: {
-        transferStatus:
-          data?.writeMode === "blob-fallback"
-            ? "fallback-buffering"
-            : "streaming-direct-write",
-        writeMode: data?.writeMode ?? null,
-        error: null,
-      },
+    useTransferStore.getState().updateTransfer({
+      transferStatus:
+        data?.writeMode === "blob-fallback"
+          ? "fallback-buffering"
+          : "streaming-direct-write",
+      writeMode: data?.writeMode ?? null,
+      error: null,
     });
 
     const fileToSend = this.pendingFile;
@@ -218,12 +208,9 @@ export default class Sender extends Connection {
     this.clearReceiverReadyTimeout();
     this.pendingFile = null;
     this.currentMetadata = null;
-    store.dispatch({
-      type: "TRANSFER_UPDATE",
-      payload: {
-        transferStatus: "failed",
-        error: data?.error || "Receiver failed to start the download.",
-      },
+    useTransferStore.getState().updateTransfer({
+      transferStatus: "failed",
+      error: data?.error || "Receiver failed to start the download.",
     });
   }
 
@@ -232,12 +219,9 @@ export default class Sender extends Connection {
       return;
     }
 
-    store.dispatch({
-      type: "TRANSFER_UPDATE",
-      payload: {
-        transferStatus: "finalizing-write",
-        error: null,
-      },
+    useTransferStore.getState().updateTransfer({
+      transferStatus: "finalizing-write",
+      error: null,
     });
   }
 
@@ -247,12 +231,9 @@ export default class Sender extends Connection {
     }
 
     this.currentMetadata = null;
-    store.dispatch({
-      type: "TRANSFER_UPDATE",
-      payload: {
-        transferStatus: "completed",
-        error: null,
-      },
+    useTransferStore.getState().updateTransfer({
+      transferStatus: "completed",
+      error: null,
     });
   }
 
@@ -262,7 +243,7 @@ export default class Sender extends Connection {
     }
 
     this.clearReceiverReadyTimeout();
-    store.dispatch({ type: "RESET_TRANSFER" });
+    useTransferStore.getState().resetTransfer();
 
     const chunkSize = 1024 * 128;
     const totalChunks = Math.ceil(file.size / chunkSize);
@@ -278,13 +259,10 @@ export default class Sender extends Connection {
       totalChunks,
     };
 
-    store.dispatch({
-      type: "TRANSFER_UPDATE",
-      payload: {
-        transferStatus: "awaiting-receiver",
-        transferSize: file.size,
-        error: null,
-      },
+    useTransferStore.getState().updateTransfer({
+      transferStatus: "awaiting-receiver",
+      transferSize: file.size,
+      error: null,
     });
 
     this.sendToSocket("metadata", this.currentMetadata);
@@ -292,12 +270,9 @@ export default class Sender extends Connection {
       if (!this.receiverReady) {
         this.pendingFile = null;
         this.currentMetadata = null;
-        store.dispatch({
-          type: "TRANSFER_UPDATE",
-          payload: {
-            transferStatus: "failed",
-            error: "Receiver did not choose a destination in time.",
-          },
+        useTransferStore.getState().updateTransfer({
+          transferStatus: "failed",
+          error: "Receiver did not choose a destination in time.",
         });
       }
     }, this.receiverReadyTimeoutMs);
@@ -405,12 +380,9 @@ export default class Sender extends Connection {
         this.createCompleteFrame(this.currentMetadata?.totalChunks ?? index)
       );
     } catch (error) {
-      store.dispatch({
-        type: "TRANSFER_UPDATE",
-        payload: {
-          transferStatus: "failed",
-          error: error?.message || "Unable to send the file.",
-        },
+      useTransferStore.getState().updateTransfer({
+        transferStatus: "failed",
+        error: error?.message || "Unable to send the file.",
       });
     }
   }

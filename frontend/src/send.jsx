@@ -4,8 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import Dropzone from "react-dropzone";
 import GitHubLink from "./components/githublink";
 import Loader from "./components/loader";
+import { useTransferStore } from "./store";
 import ToastNotification from "./components/toastNoti";
-import store from "./store";
 import { Sender } from "./utils/connection";
 import dataFormatHandler, {
   transferRateFormatHandler,
@@ -51,16 +51,16 @@ const getTransferMessage = (transferStatus, writeMode, error) => {
 };
 
 export default function Send() {
+  const isConnected = useTransferStore((state) => state.isConnected);
+  const sizeReceived = useTransferStore((state) => state.sizeReceived);
+  const transferSize = useTransferStore((state) => state.transferSize);
+  const transferStatus = useTransferStore((state) => state.transferStatus);
+  const transferError = useTransferStore((state) => state.error);
+  const writeMode = useTransferStore((state) => state.writeMode);
   const [connection, setConnection] = useState(null);
   const [uniqueId, setUniqueId] = useState("");
   const [file, setFile] = useState(null);
-  const [isConnected, setIsConnected] = useState(false);
   const [isModalVisible, setIsModalVisible] = useState(false);
-  const [sizeReceived, setSizeReceived] = useState(0);
-  const [transferStatus, setTransferStatus] = useState("idle");
-  const [transferError, setTransferError] = useState(null);
-  const [writeMode, setWriteMode] = useState(null);
-  const [transferSize, setTransferSize] = useState(0);
   const [transferSpeed, setTransferSpeed] = useState(0);
   const sizeReceivedRef = useRef(0);
 
@@ -75,30 +75,6 @@ export default function Send() {
       }
     };
     checkUniqueId();
-  }, []);
-
-  useEffect(() => {
-    const syncFromStore = () => {
-      const {
-        isConnected: connected,
-        sizeReceived: receivedBytes,
-        transferSize: nextTransferSize,
-        transferStatus: nextTransferStatus,
-        error,
-        writeMode: nextWriteMode,
-      } = store.getState().key;
-
-      setIsConnected(connected);
-      setSizeReceived(receivedBytes);
-      setTransferSize(nextTransferSize);
-      setTransferStatus(nextTransferStatus);
-      setTransferError(error);
-      setWriteMode(nextWriteMode);
-    };
-
-    syncFromStore();
-    const unsubscribe = store.subscribe(syncFromStore);
-    return unsubscribe;
   }, []);
 
   useEffect(() => {
@@ -157,7 +133,6 @@ export default function Send() {
 
   const handleSend = () => {
     if (file && connection) {
-      setSizeReceived(0);
       connection.sendFile(file);
     }
   };
