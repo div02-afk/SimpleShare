@@ -1,25 +1,26 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createTransferStoreAdapter } from "../utils/transport/storeAdapter";
 import SenderSession from "../utils/transport/senderSession";
 
 const MAX_SERVER_RETRIES = 5;
 
 export function useSenderSession() {
-  const sessionRef = useRef<SenderSession | null>(null);
   const [roomId, setRoomId] = useState("");
   const [initError, setInitError] = useState<string | null>(null);
   const [retrySeed, setRetrySeed] = useState(0);
+  const session = useMemo(
+    () => {
+      void retrySeed;
+      return new SenderSession(createTransferStoreAdapter());
+    },
+    [retrySeed]
+  );
 
   useEffect(() => {
     let cancelled = false;
     let retryTimeout: number | null = null;
     let attempt = 0;
     let lastErrorMessage: string | null = null;
-    const store = createTransferStoreAdapter();
-    const session = new SenderSession(store);
-    sessionRef.current = session;
-    setRoomId("");
-    setInitError(null);
 
     const scheduleRetry = () => {
       if (attempt >= MAX_SERVER_RETRIES) {
@@ -72,15 +73,16 @@ export function useSenderSession() {
         window.clearTimeout(retryTimeout);
       }
       session.dispose();
-      sessionRef.current = null;
     };
-  }, [retrySeed]);
+  }, [session]);
 
   return {
-    session: sessionRef.current,
+    session,
     roomId,
     initError,
     retry: () => {
+      setRoomId("");
+      setInitError(null);
       setRetrySeed((value) => value + 1);
     },
   };

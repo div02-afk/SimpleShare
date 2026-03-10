@@ -75,14 +75,17 @@ export default function Receive() {
       return;
     }
 
-    setIsLoading(false);
-    setIsModalVisible(true);
-    const timeout = window.setTimeout(() => {
+    const showTimeout = window.setTimeout(() => {
+      setIsLoading(false);
+      setIsModalVisible(true);
+    }, 0);
+    const hideTimeout = window.setTimeout(() => {
       setIsModalVisible(false);
     }, 1500);
 
     return () => {
-      window.clearTimeout(timeout);
+      window.clearTimeout(showTimeout);
+      window.clearTimeout(hideTimeout);
     };
   }, [isConnected]);
 
@@ -91,13 +94,16 @@ export default function Receive() {
       return;
     }
 
-    setIsTransferCompleteVisible(true);
-    const timeout = window.setTimeout(() => {
+    const showTimeout = window.setTimeout(() => {
+      setIsTransferCompleteVisible(true);
+    }, 0);
+    const hideTimeout = window.setTimeout(() => {
       setIsTransferCompleteVisible(false);
     }, 2000);
 
     return () => {
-      window.clearTimeout(timeout);
+      window.clearTimeout(showTimeout);
+      window.clearTimeout(hideTimeout);
     };
   }, [transferStatus]);
 

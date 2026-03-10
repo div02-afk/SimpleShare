@@ -19,7 +19,6 @@ export function useTransferSpeed(
 
   useEffect(() => {
     if (!ACTIVE_TRANSFER_STATUSES.has(transferStatus)) {
-      setTransferSpeed(0);
       return;
     }
 
@@ -44,7 +43,7 @@ export function useTransferSpeed(
     };
   }, [transferStatus]);
 
-  return transferSpeed;
+  return ACTIVE_TRANSFER_STATUSES.has(transferStatus) ? transferSpeed : 0;
 }
 
 export default useTransferSpeed;
