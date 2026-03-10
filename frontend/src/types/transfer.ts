@@ -9,6 +9,13 @@ export type TransferStatus =
   | "failed";
 
 export type WriteMode = "stream" | "blob-fallback";
+export type TransportRole = "sender" | "receiver";
+export type SignalingStatus =
+  | "connecting"
+  | "connected"
+  | "degraded"
+  | "disconnected";
+export type PeerStatus = "waiting" | "connected" | "degraded" | "disconnected";
 
 export type CompressionMode = "none" | "adaptive-deflate-v1";
 
@@ -24,6 +31,9 @@ export interface TransferMetadata {
 
 export interface TransferState {
   isConnected: boolean;
+  signalingStatus: SignalingStatus;
+  signalingLatencyMs: number | null;
+  peerStatus: PeerStatus;
   sizeReceived: number;
   bytesWritten: number;
   transferSize: number;
@@ -38,6 +48,9 @@ export interface TransferState {
 
 export interface TransferActions {
   setConnected: (isConnected?: boolean) => void;
+  setSignalingStatus: (signalingStatus: SignalingStatus) => void;
+  setSignalingLatency: (signalingLatencyMs: number | null) => void;
+  setPeerStatus: (peerStatus: PeerStatus) => void;
   setMetadata: (metadata: TransferMetadata | null) => void;
   setSizeReceived: (sizeReceived: number) => void;
   setBytesWritten: (bytesWritten: number) => void;

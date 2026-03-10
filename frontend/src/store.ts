@@ -3,6 +3,9 @@ import type { TransferActions, TransferState, TransferStore } from "./types/tran
 
 const createTransferState = (): TransferState => ({
   isConnected: false,
+  signalingStatus: "connecting",
+  signalingLatencyMs: null,
+  peerStatus: "waiting",
   sizeReceived: 0,
   bytesWritten: 0,
   transferSize: 0,
@@ -19,6 +22,15 @@ export const useTransferStore = create<TransferStore>((set) => ({
   ...createTransferState(),
   setConnected: (isConnected = true) => {
     set({ isConnected });
+  },
+  setSignalingStatus: (signalingStatus) => {
+    set({ signalingStatus });
+  },
+  setSignalingLatency: (signalingLatencyMs) => {
+    set({ signalingLatencyMs });
+  },
+  setPeerStatus: (peerStatus) => {
+    set({ peerStatus });
   },
   setMetadata: (metadata) => {
     set({ metadata });
@@ -62,6 +74,9 @@ export const useTransferStore = create<TransferStore>((set) => ({
     set((state) => ({
       ...createTransferState(),
       isConnected: state.isConnected,
+      signalingStatus: state.signalingStatus,
+      signalingLatencyMs: state.signalingLatencyMs,
+      peerStatus: state.peerStatus,
     }));
   },
 }));

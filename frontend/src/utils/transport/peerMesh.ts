@@ -1,3 +1,4 @@
+import type { PeerStatus } from "../../types/transfer";
 import peerConnectionInfo from "../peerConnectionSetup";
 import type {
   PeerMeshConfig,
@@ -24,6 +25,12 @@ export class PeerMesh implements PeerMeshLike {
 
   private readonly connectedConnectionIds = new Set<number>();
 
+  private readonly connectionIceStates: RTCIceConnectionState[];
+
+  private readonly openChannelCounts: number[];
+
+  private readonly hadOpenChannels: boolean[];
+
   private bytesSent = 0;
 
   private bytesAcknowledged = 0;
@@ -33,6 +40,10 @@ export class PeerMesh implements PeerMeshLike {
   private nextConnectionIndex = 0;
 
   private nextDataChannelIndex = 0;
+
+  private lastTransportState: PeerStatus = "waiting";
+
+  private hasEverConnected = false;
 
   private disposed = false;
 
@@ -48,6 +59,18 @@ export class PeerMesh implements PeerMeshLike {
       peerConnectionFactory(peerConnectionInfo)
     );
     this.dataChannels = Array.from({ length: config.peerConnectionCount }, () => []);
+    this.connectionIceStates = Array.from(
+      { length: config.peerConnectionCount },
+      () => "new" as RTCIceConnectionState
+    );
+    this.openChannelCounts = Array.from(
+      { length: config.peerConnectionCount },
+      () => 0
+    );
+    this.hadOpenChannels = Array.from(
+      { length: config.peerConnectionCount },
+      () => false
+    );
 
     this.peerConnections.forEach((peerConnection, connectionId) => {
       this.attachPeerConnectionListeners(peerConnection, connectionId);
@@ -55,6 +78,8 @@ export class PeerMesh implements PeerMeshLike {
         this.createDataChannels(connectionId);
       }
     });
+
+    this.emitTransportStateIfChanged();
   }
 
   async createOffer(connectionId: number): Promise<RTCSessionDescriptionInit> {
@@ -171,25 +196,65 @@ export class PeerMesh implements PeerMeshLike {
     };
 
     peerConnection.oniceconnectionstatechange = () => {
-      if (
-        peerConnection.iceConnectionState === "connected" ||
-        peerConnection.iceConnectionState === "completed"
-      ) {
+      const state = peerConnection.iceConnectionState;
+      this.connectionIceStates[connectionId] = state;
+
+      if (state === "connected" || state === "completed") {
         this.connectedConnectionIds.add(connectionId);
         if (this.connectedConnectionIds.size === this.connectionCount) {
           this.dependencies.onAllConnected();
         }
+      } else {
+        this.connectedConnectionIds.delete(connectionId);
       }
+
+      this.emitTransportStateIfChanged();
     };
 
     if (this.config.role === "receiver") {
       peerConnection.ondatachannel = (event) => {
         const channel = event.channel;
         channel.binaryType = "arraybuffer";
-        channel.onmessage = ({ data }) => {
-          this.dependencies.onDataChannelMessage?.(data, connectionId);
-        };
+        this.dataChannels[connectionId]!.push(channel);
+        this.attachDataChannelListeners(channel, connectionId, true);
       };
+    }
+  }
+
+  private attachDataChannelListeners(
+    channel: RTCDataChannel,
+    connectionId: number,
+    attachMessageHandler: boolean
+  ): void {
+    if (attachMessageHandler) {
+      channel.onmessage = ({ data }) => {
+        this.dependencies.onDataChannelMessage?.(data, connectionId);
+      };
+    }
+
+    channel.onopen = () => {
+      this.openChannelCounts[connectionId] =
+        (this.openChannelCounts[connectionId] ?? 0) + 1;
+      this.hadOpenChannels[connectionId] = true;
+      this.emitTransportStateIfChanged();
+    };
+
+    channel.onclose = () => {
+      this.openChannelCounts[connectionId] = Math.max(
+        0,
+        (this.openChannelCounts[connectionId] ?? 0) - 1
+      );
+      if (attachMessageHandler) {
+        channel.onmessage = null;
+      }
+      this.emitTransportStateIfChanged();
+    };
+
+    if (channel.readyState === "open") {
+      this.openChannelCounts[connectionId] =
+        (this.openChannelCounts[connectionId] ?? 0) + 1;
+      this.hadOpenChannels[connectionId] = true;
+      this.emitTransportStateIfChanged();
     }
   }
 
@@ -205,7 +270,8 @@ export class PeerMesh implements PeerMeshLike {
       );
       channel.binaryType = "arraybuffer";
       channel.bufferedAmountLowThreshold = this.config.dataChannelLowWaterMark;
-      this.dataChannels[connectionId]?.push(channel);
+      this.dataChannels[connectionId]!.push(channel);
+      this.attachDataChannelListeners(channel, connectionId, false);
     }
   }
 
@@ -307,6 +373,65 @@ export class PeerMesh implements PeerMeshLike {
         resolve();
       }
     });
+  }
+
+  private emitTransportStateIfChanged(): void {
+    const nextState = this.getTransportState();
+    if (nextState === "connected" || nextState === "degraded") {
+      this.hasEverConnected = true;
+    }
+
+    if (this.lastTransportState === nextState) {
+      return;
+    }
+
+    this.lastTransportState = nextState;
+    this.dependencies.onTransportStateChange?.(nextState);
+  }
+
+  private getTransportState(): PeerStatus {
+    const usableConnectionCount = this.connectionIceStates.reduce(
+      (count, _state, connectionId) =>
+        count + (this.isConnectionUsable(connectionId) ? 1 : 0),
+      0
+    );
+
+    if (usableConnectionCount === 0) {
+      return this.hasEverConnected ? "disconnected" : "waiting";
+    }
+
+    const brokenConnectionCount = this.connectionIceStates.reduce(
+      (count, _state, connectionId) =>
+        count + (this.isConnectionBroken(connectionId) ? 1 : 0),
+      0
+    );
+
+    return brokenConnectionCount > 0 ? "degraded" : "connected";
+  }
+
+  private isConnectionUsable(connectionId: number): boolean {
+    const iceState = this.connectionIceStates[connectionId];
+    return (
+      (this.openChannelCounts[connectionId] ?? 0) > 0 &&
+      (iceState === "connected" || iceState === "completed")
+    );
+  }
+
+  private isConnectionBroken(connectionId: number): boolean {
+    const iceState = this.connectionIceStates[connectionId];
+
+    if (
+      iceState === "failed" ||
+      iceState === "disconnected" ||
+      iceState === "closed"
+    ) {
+      return true;
+    }
+
+    return (
+      Boolean(this.hadOpenChannels[connectionId]) &&
+      (this.openChannelCounts[connectionId] ?? 0) === 0
+    );
   }
 
   private requirePeerConnection(connectionId: number): RTCPeerConnection {

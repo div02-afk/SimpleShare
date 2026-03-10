@@ -71,4 +71,50 @@ describe("PeerMesh", () => {
     expect(channel.send).toHaveBeenCalledTimes(1);
     expect(resolved).toBe(true);
   });
+
+  it("reports connected, degraded, and disconnected transport states", () => {
+    const firstChannel = createMockDataChannel();
+    const secondChannel = createMockDataChannel();
+    const firstConnection = createMockPeerConnection(firstChannel);
+    const secondConnection = createMockPeerConnection(secondChannel);
+    const states: string[] = [];
+
+    new PeerMesh(
+      {
+        role: "sender",
+        peerConnectionCount: 2,
+        dataChannelsPerConnection: 1,
+        dataChannelHighWaterMark: 1024,
+        dataChannelLowWaterMark: 512,
+        totalBufferedHighWaterMark: 4,
+        totalBufferedLowWaterMark: 2,
+      },
+      {
+        onIceCandidate: vi.fn(),
+        onAllConnected: vi.fn(),
+        onTransportStateChange: (state) => {
+          states.push(state);
+        },
+        peerConnectionFactory: vi
+          .fn()
+          .mockReturnValueOnce(firstConnection)
+          .mockReturnValueOnce(secondConnection),
+      }
+    );
+
+    (firstConnection as { iceConnectionState: RTCIceConnectionState }).iceConnectionState =
+      "connected";
+    firstConnection.oniceconnectionstatechange?.(new Event("iceconnectionstatechange"));
+
+    (secondConnection as { iceConnectionState: RTCIceConnectionState }).iceConnectionState =
+      "failed";
+    secondConnection.oniceconnectionstatechange?.(new Event("iceconnectionstatechange"));
+
+    firstChannel.onclose?.(new Event("close"));
+    (firstConnection as { iceConnectionState: RTCIceConnectionState }).iceConnectionState =
+      "disconnected";
+    firstConnection.oniceconnectionstatechange?.(new Event("iceconnectionstatechange"));
+
+    expect(states).toEqual(["connected", "degraded", "disconnected"]);
+  });
 });

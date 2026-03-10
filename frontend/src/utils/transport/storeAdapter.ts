@@ -6,6 +6,15 @@ export function createTransferStoreAdapter(): TransferStoreAdapter {
     setConnected: (isConnected) => {
       useTransferStore.getState().setConnected(isConnected);
     },
+    setSignalingStatus: (signalingStatus) => {
+      useTransferStore.getState().setSignalingStatus(signalingStatus);
+    },
+    setSignalingLatency: (signalingLatencyMs) => {
+      useTransferStore.getState().setSignalingLatency(signalingLatencyMs);
+    },
+    setPeerStatus: (peerStatus) => {
+      useTransferStore.getState().setPeerStatus(peerStatus);
+    },
     setMetadata: (metadata) => {
       useTransferStore.getState().setMetadata(metadata);
     },

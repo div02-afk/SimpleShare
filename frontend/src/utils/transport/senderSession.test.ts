@@ -23,6 +23,16 @@ class MockSignalingClient {
     };
   }
 
+  onSignalingStatusChange(handler: (status: "connecting" | "connected") => void) {
+    handler("connected");
+    return () => {};
+  }
+
+  onLatencyChange(handler: (latencyMs: number | null) => void) {
+    handler(null);
+    return () => {};
+  }
+
   isConnected() {
     return true;
   }
@@ -77,6 +87,9 @@ class MockCompressionAdapter {
 function createStoreAdapter(): TransferStoreAdapter {
   return {
     setConnected: vi.fn(),
+    setSignalingStatus: vi.fn(),
+    setSignalingLatency: vi.fn(),
+    setPeerStatus: vi.fn(),
     setMetadata: vi.fn(),
     setSizeReceived: vi.fn(),
     setBytesWritten: vi.fn(),
@@ -129,7 +142,10 @@ describe("SenderSession", () => {
     const result = await session.init();
 
     expect(result.roomId).toBe("room-123");
-    expect(signaling.joinRoom).toHaveBeenCalledWith("room-123");
+    expect(signaling.joinRoom).toHaveBeenCalledWith({
+      room: "room-123",
+      role: "sender",
+    });
   });
 
   it("fails if the receiver never becomes ready", async () => {
@@ -150,6 +166,29 @@ describe("SenderSession", () => {
     expect(store.setTransferError).toHaveBeenCalledWith(
       "Receiver did not choose a destination in time."
     );
+  });
+
+  it("starts offer creation when the room becomes ready", async () => {
+    const store = createStoreAdapter();
+    const signaling = new MockSignalingClient();
+    const peerMesh = new MockPeerMesh();
+    const session = new SenderSession(store, {}, {
+      createSignalingClient: () => signaling as never,
+      createPeerMesh: () => peerMesh as never,
+    });
+
+    await session.init();
+    await signaling.trigger("room-ready", { room: "room-123" });
+
+    expect(peerMesh.createOffer).toHaveBeenCalledTimes(2);
+    expect(signaling.emitted).toContainEqual({
+      event: "offer",
+      payload: {
+        room: "room-123",
+        offer: { type: "offer", sdp: "0" },
+        connectionId: 0,
+      },
+    });
   });
 
   it("starts sending frames once the receiver is ready", async () => {
@@ -275,5 +314,33 @@ describe("SenderSession", () => {
       expect(parsed.encoding).toBe("raw");
       expect(parsed.originalByteLength).toBe(128 * 1024);
     }
+  });
+
+  it("clears the recovery timer when the peer transport reconnects", async () => {
+    const store = createStoreAdapter();
+    const signaling = new MockSignalingClient();
+    const peerMesh = new MockPeerMesh();
+    const session = new SenderSession(store, {}, {
+      createSignalingClient: () => signaling as never,
+      createPeerMesh: () => peerMesh as never,
+    });
+
+    await session.init();
+    await signaling.trigger("peer-transport-state", {
+      room: "room-123",
+      role: "receiver",
+      state: "disconnected",
+    });
+    vi.advanceTimersByTime(5000);
+    await signaling.trigger("peer-transport-state", {
+      room: "room-123",
+      role: "receiver",
+      state: "connected",
+    });
+    vi.advanceTimersByTime(10000);
+
+    expect(store.setTransferError).not.toHaveBeenCalledWith(
+      "Peer-to-peer connection was lost and could not be recovered."
+    );
   });
 });

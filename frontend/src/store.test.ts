@@ -8,12 +8,18 @@ describe("transfer store", () => {
 
   it("preserves connection state when resetting transfer", () => {
     useTransferStore.getState().setConnected(true);
+    useTransferStore.getState().setPeerStatus("connected");
+    useTransferStore.getState().setSignalingStatus("connected");
+    useTransferStore.getState().setSignalingLatency(42);
     useTransferStore.getState().setTransferStatus("failed");
     useTransferStore.getState().setTransferError("boom");
 
     useTransferStore.getState().resetTransfer();
 
     expect(useTransferStore.getState().isConnected).toBe(true);
+    expect(useTransferStore.getState().peerStatus).toBe("connected");
+    expect(useTransferStore.getState().signalingStatus).toBe("connected");
+    expect(useTransferStore.getState().signalingLatencyMs).toBe(42);
     expect(useTransferStore.getState().transferStatus).toBe("idle");
     expect(useTransferStore.getState().error).toBeNull();
   });

@@ -1,12 +1,49 @@
 import type {
   CompressionMode,
+  PeerStatus,
+  SignalingStatus,
   TransferMetadata,
   TransferStatus,
+  TransportRole,
   WriteMode,
 } from "../../types/transfer";
 
-export type TransportRole = "sender" | "receiver";
 export type ChunkEncoding = "raw" | "deflate";
+export type JoinRejectedReason =
+  | "sender-not-found"
+  | "duplicate-role"
+  | "room-full";
+export type PeerTransportState = Exclude<PeerStatus, "waiting">;
+
+export interface JoinRoomPayload {
+  room: string;
+  role: TransportRole;
+}
+
+export interface RoomPayload {
+  room: string;
+}
+
+export interface JoinRejectedPayload extends RoomPayload {
+  reason: JoinRejectedReason;
+}
+
+export interface PeerLeftPayload extends RoomPayload {
+  role: TransportRole;
+}
+
+export interface WebSocketPingPayload {
+  sentAt: number;
+}
+
+export interface WebSocketPongPayload extends WebSocketPingPayload {
+  serverTime: number;
+}
+
+export interface PeerTransportStatePayload extends RoomPayload {
+  role: TransportRole;
+  state: PeerTransportState;
+}
 
 export interface OfferPayload {
   room: string;
@@ -38,10 +75,6 @@ export interface ReceiverErrorPayload {
   error: string;
 }
 
-export interface RoomPayload {
-  room: string;
-}
-
 export interface ReceivedPayload {
   room: string;
   logicalBytesReceived: number;
@@ -49,7 +82,7 @@ export interface ReceivedPayload {
 }
 
 export interface ClientToServerEvents {
-  "join-room": (room: string) => void;
+  "join-room": (payload: JoinRoomPayload) => void;
   offer: (payload: OfferPayload) => void;
   answer: (payload: AnswerPayload) => void;
   "ice-candidate": (payload: IceCandidatePayload) => void;
@@ -59,6 +92,8 @@ export interface ClientToServerEvents {
   "receiver-finalizing": (payload: RoomPayload) => void;
   "transfer-complete": (payload: RoomPayload) => void;
   received: (payload: ReceivedPayload) => void;
+  "ws-ping": (payload: WebSocketPingPayload) => void;
+  "peer-transport-state": (payload: PeerTransportStatePayload) => void;
 }
 
 export interface ServerToClientEvents {
@@ -71,12 +106,19 @@ export interface ServerToClientEvents {
   "receiver-finalizing": (payload: RoomPayload) => void;
   "transfer-complete": (payload: RoomPayload) => void;
   received: (payload: ReceivedPayload) => void;
-  "room-full": () => void;
+  "room-ready": (payload: RoomPayload) => void;
+  "join-rejected": (payload: JoinRejectedPayload) => void;
+  "peer-left": (payload: PeerLeftPayload) => void;
+  "ws-pong": (payload: WebSocketPongPayload) => void;
+  "peer-transport-state": (payload: PeerTransportStatePayload) => void;
   disconnect: () => void;
 }
 
 export interface TransferStoreAdapter {
   setConnected: (isConnected?: boolean) => void;
+  setSignalingStatus: (signalingStatus: SignalingStatus) => void;
+  setSignalingLatency: (signalingLatencyMs: number | null) => void;
+  setPeerStatus: (peerStatus: PeerStatus) => void;
   setMetadata: (metadata: TransferMetadata | null) => void;
   setSizeReceived: (sizeReceived: number) => void;
   setBytesWritten: (bytesWritten: number) => void;
@@ -122,6 +164,7 @@ export interface PeerMeshDependencies {
     sender: TransportRole
   ) => void;
   onAllConnected: () => void;
+  onTransportStateChange?: (state: PeerStatus) => void;
   onDataChannelMessage?: (
     data: Blob | string | ArrayBuffer | ArrayBufferView,
     connectionId: number
@@ -131,7 +174,7 @@ export interface PeerMeshDependencies {
 
 export interface SignalingClientLike {
   fetchRoomId(): Promise<string>;
-  joinRoom(roomId: string): void;
+  joinRoom(payload: JoinRoomPayload): void;
   emit<K extends keyof ClientToServerEvents>(
     event: K,
     ...args: Parameters<ClientToServerEvents[K]>
@@ -140,6 +183,8 @@ export interface SignalingClientLike {
     event: K,
     handler: ServerToClientEvents[K]
   ): () => void;
+  onSignalingStatusChange(handler: (status: SignalingStatus) => void): () => void;
+  onLatencyChange(handler: (latencyMs: number | null) => void): () => void;
   isConnected(): boolean;
   dispose(): void;
 }

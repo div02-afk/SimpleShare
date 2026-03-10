@@ -8,6 +8,7 @@ import ToastNotification from "./components/toastNoti";
 import { useSenderSession } from "./hooks/useSenderSession";
 import { useTransferSpeed } from "./hooks/useTransferSpeed";
 import { useTransferStore } from "./store";
+import type { PeerStatus, SignalingStatus } from "./types/transfer";
 import dataFormatHandler, {
   transferRateFormatHandler,
 } from "./utils/dataFormatHandler";
@@ -50,8 +51,32 @@ const getTransferMessage = (
   return null;
 };
 
+const getConnectionMessage = (
+  signalingStatus: SignalingStatus,
+  peerStatus: PeerStatus
+) => {
+  if (signalingStatus === "disconnected" || peerStatus === "disconnected") {
+    return "Disconnected";
+  }
+
+  if (signalingStatus === "degraded" || peerStatus === "degraded") {
+    return "Degraded, attempting recovery";
+  }
+
+  if (peerStatus === "connected") {
+    return "Connected";
+  }
+
+  return "Waiting for peer";
+};
+
 export default function Send() {
   const isConnected = useTransferStore((state) => state.isConnected);
+  const signalingStatus = useTransferStore((state) => state.signalingStatus);
+  const signalingLatencyMs = useTransferStore(
+    (state) => state.signalingLatencyMs
+  );
+  const peerStatus = useTransferStore((state) => state.peerStatus);
   const sizeReceived = useTransferStore((state) => state.sizeReceived);
   const transferSize = useTransferStore((state) => state.transferSize);
   const transferStatus = useTransferStore((state) => state.transferStatus);
@@ -110,6 +135,7 @@ export default function Send() {
     writeMode,
     transferError
   );
+  const connectionMessage = getConnectionMessage(signalingStatus, peerStatus);
   const totalSize = transferSize || file?.size || 0;
   const showProgress = transferStatus !== "idle";
   const showSpeed =
@@ -133,9 +159,12 @@ export default function Send() {
         </p>
       </div>
 
-      <p className="text-center">
-        {isConnected ? "Connected" : "Waiting for a connection"}
-      </p>
+      <div className="space-y-2 text-center">
+        <p>{connectionMessage}</p>
+        {signalingLatencyMs != null && (
+          <p className="text-sm text-gray-400">Signaling: {signalingLatencyMs} ms</p>
+        )}
+      </div>
 
       <Dropzone
         onDrop={(acceptedFiles) => {

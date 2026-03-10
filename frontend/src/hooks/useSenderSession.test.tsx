@@ -61,10 +61,10 @@ describe("useSenderSession", () => {
     });
 
     await waitFor(() => {
-      expect(snapshots.at(-1)?.roomId).toBe("room-123");
+      expect(snapshots[snapshots.length - 1]?.roomId).toBe("room-123");
     });
 
-    expect(snapshots.at(-1)?.initError).toBeNull();
+    expect(snapshots[snapshots.length - 1]?.initError).toBeNull();
     expect(mocks.instances).toHaveLength(2);
     expect(mocks.instances[0]?.dispose).toHaveBeenCalledTimes(1);
     expect(mocks.instances[1]?.init).toHaveBeenCalledTimes(1);

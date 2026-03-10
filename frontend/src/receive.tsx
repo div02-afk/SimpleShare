@@ -9,6 +9,7 @@ import ToastNotification from "./components/toastNoti";
 import { useReceiverSession } from "./hooks/useReceiverSession";
 import { useTransferSpeed } from "./hooks/useTransferSpeed";
 import { useTransferStore } from "./store";
+import type { PeerStatus, SignalingStatus } from "./types/transfer";
 import dataFormatHandler, {
   transferRateFormatHandler,
 } from "./utils/dataFormatHandler";
@@ -51,10 +52,34 @@ const getReceiverMessage = (
   return null;
 };
 
+const getConnectionMessage = (
+  signalingStatus: SignalingStatus,
+  peerStatus: PeerStatus
+) => {
+  if (signalingStatus === "disconnected" || peerStatus === "disconnected") {
+    return "Disconnected";
+  }
+
+  if (signalingStatus === "degraded" || peerStatus === "degraded") {
+    return "Degraded, attempting recovery";
+  }
+
+  if (peerStatus === "connected") {
+    return "Connected";
+  }
+
+  return "Waiting for peer";
+};
+
 export default function Receive() {
   const sizeReceived = useTransferStore((state) => state.sizeReceived);
   const bytesWritten = useTransferStore((state) => state.bytesWritten);
   const isConnected = useTransferStore((state) => state.isConnected);
+  const signalingStatus = useTransferStore((state) => state.signalingStatus);
+  const signalingLatencyMs = useTransferStore(
+    (state) => state.signalingLatencyMs
+  );
+  const peerStatus = useTransferStore((state) => state.peerStatus);
   const metadata = useTransferStore((state) => state.metadata);
   const transferStatus = useTransferStore((state) => state.transferStatus);
   const writeMode = useTransferStore((state) => state.writeMode);
@@ -90,6 +115,20 @@ export default function Receive() {
   }, [isConnected]);
 
   useEffect(() => {
+    if (!isLoading) {
+      return;
+    }
+
+    if (
+      transferError ||
+      peerStatus !== "waiting" ||
+      signalingStatus === "disconnected"
+    ) {
+      setIsLoading(false);
+    }
+  }, [isLoading, peerStatus, signalingStatus, transferError]);
+
+  useEffect(() => {
     if (transferStatus !== "completed") {
       return;
     }
@@ -121,6 +160,7 @@ export default function Receive() {
     writeMode,
     transferError
   );
+  const connectionMessage = getConnectionMessage(signalingStatus, peerStatus);
   const totalSize = metadata?.size ?? 0;
   const canPickDirectFile = session?.supportsDirectFileWrite() ?? false;
   const canStartTransfer =
@@ -178,6 +218,13 @@ export default function Receive() {
           )}
         </button>
       </form>
+
+      <div className="mt-6 space-y-2">
+        <p>{connectionMessage}</p>
+        {signalingLatencyMs != null && (
+          <p className="text-sm text-gray-400">Signaling: {signalingLatencyMs} ms</p>
+        )}
+      </div>
 
       {isConnected && transferStatus === "idle" && (
         <div className="mt-10">

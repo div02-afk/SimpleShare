@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { TransferMetadata } from "../../types/transfer";
 import { createDataFrame } from "./frameProtocol";
 import type { TransferStoreAdapter } from "./types";
@@ -22,6 +22,16 @@ class MockSignalingClient {
     return () => {
       this.handlers.delete(event);
     };
+  }
+
+  onSignalingStatusChange(handler: (status: "connecting" | "connected") => void) {
+    handler("connected");
+    return () => {};
+  }
+
+  onLatencyChange(handler: (latencyMs: number | null) => void) {
+    handler(null);
+    return () => {};
   }
 
   isConnected() {
@@ -85,6 +95,9 @@ class MockCompressionAdapter {
 function createStoreAdapter(): TransferStoreAdapter {
   return {
     setConnected: vi.fn(),
+    setSignalingStatus: vi.fn(),
+    setSignalingLatency: vi.fn(),
+    setPeerStatus: vi.fn(),
     setMetadata: vi.fn(),
     setSizeReceived: vi.fn(),
     setBytesWritten: vi.fn(),
@@ -111,6 +124,10 @@ const metadata: TransferMetadata = {
 };
 
 describe("ReceiverSession", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
   it("stores metadata and moves into awaiting-save state", async () => {
     const store = createStoreAdapter();
     const signaling = new MockSignalingClient();
@@ -253,5 +270,55 @@ describe("ReceiverSession", () => {
 
     expect(store.setTransferStatus).toHaveBeenCalledWith("failed");
     expect(store.setTransferError).toHaveBeenCalledWith("bad deflate");
+  });
+
+  it("surfaces invalid share codes from join rejection", async () => {
+    const store = createStoreAdapter();
+    const signaling = new MockSignalingClient();
+    const peerMesh = new MockPeerMesh();
+    const session = new ReceiverSession(store, {}, {
+      createSignalingClient: () => signaling as never,
+      createPeerMesh: () => peerMesh as never,
+    });
+
+    await session.connect("room-123");
+    await signaling.trigger("join-rejected", {
+      room: "room-123",
+      reason: "sender-not-found",
+    });
+
+    expect(store.setTransferStatus).toHaveBeenCalledWith("failed");
+    expect(store.setTransferError).toHaveBeenCalledWith(
+      "Share code not found or already expired."
+    );
+    expect(signaling.dispose).toHaveBeenCalledTimes(1);
+  });
+
+  it("clears the recovery timer when peer transport reconnects", async () => {
+    const store = createStoreAdapter();
+    const signaling = new MockSignalingClient();
+    const peerMesh = new MockPeerMesh();
+    const session = new ReceiverSession(store, {}, {
+      createSignalingClient: () => signaling as never,
+      createPeerMesh: () => peerMesh as never,
+    });
+
+    await session.connect("room-123");
+    await signaling.trigger("peer-transport-state", {
+      room: "room-123",
+      role: "sender",
+      state: "disconnected",
+    });
+    vi.advanceTimersByTime(5000);
+    await signaling.trigger("peer-transport-state", {
+      room: "room-123",
+      role: "sender",
+      state: "connected",
+    });
+    vi.advanceTimersByTime(10000);
+
+    expect(store.setTransferError).not.toHaveBeenCalledWith(
+      "Peer-to-peer connection was lost and could not be recovered."
+    );
   });
 });
