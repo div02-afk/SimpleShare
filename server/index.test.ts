@@ -1,15 +1,58 @@
-const test = require("node:test");
-const assert = require("node:assert/strict");
-const { createRoomRegistry, registerSocketHandlers } = require("./index");
+import assert from "node:assert/strict";
+import test from "node:test";
+import {
+  createRoomRegistry,
+  registerSocketHandlers,
+} from "./index.js";
+
+type RegisterSocketIo = Parameters<typeof registerSocketHandlers>[0];
+type RegisterSocket = Parameters<typeof registerSocketHandlers>[1];
+
+type ServerEventName =
+  | "offer"
+  | "answer"
+  | "ice-candidate"
+  | "metadata"
+  | "receiver-ready"
+  | "receiver-error"
+  | "receiver-finalizing"
+  | "transfer-complete"
+  | "received"
+  | "room-ready"
+  | "join-rejected"
+  | "peer-left"
+  | "ws-pong"
+  | "peer-transport-state";
+
+type ClientEventName =
+  | "join-room"
+  | "offer"
+  | "answer"
+  | "ice-candidate"
+  | "metadata"
+  | "receiver-ready"
+  | "receiver-error"
+  | "receiver-finalizing"
+  | "transfer-complete"
+  | "received"
+  | "ws-ping"
+  | "peer-transport-state"
+  | "disconnect";
+
+interface RecordedEvent {
+  room?: string;
+  event: string;
+  payload: unknown;
+}
 
 function createFakeIo() {
-  const emitted = [];
+  const emitted: RecordedEvent[] = [];
 
   return {
     emitted,
-    to(room) {
+    to(room: string) {
       return {
-        emit(event, payload) {
+        emit(event: ServerEventName, payload: unknown) {
           emitted.push({ room, event, payload });
         },
       };
@@ -18,10 +61,10 @@ function createFakeIo() {
 }
 
 function createFakeSocket(id = "socket-1") {
-  const handlers = new Map();
-  const emitted = [];
-  const relayed = [];
-  const joinedRooms = [];
+  const handlers = new Map<ClientEventName, (payload?: unknown) => void>();
+  const emitted: RecordedEvent[] = [];
+  const relayed: RecordedEvent[] = [];
+  const joinedRooms: string[] = [];
 
   return {
     id,
@@ -29,23 +72,23 @@ function createFakeSocket(id = "socket-1") {
     relayed,
     joinedRooms,
     handlers,
-    on(event, handler) {
+    on(event: ClientEventName, handler: (payload?: unknown) => void) {
       handlers.set(event, handler);
     },
-    emit(event, payload) {
+    emit(event: ServerEventName, payload: unknown) {
       emitted.push({ event, payload });
     },
-    join(room) {
+    join(room: string) {
       joinedRooms.push(room);
     },
-    to(room) {
+    to(room: string) {
       return {
-        emit(event, payload) {
+        emit(event: ServerEventName, payload: unknown) {
           relayed.push({ room, event, payload });
         },
       };
     },
-    trigger(event, payload) {
+    trigger(event: ClientEventName, payload?: unknown) {
       const handler = handlers.get(event);
       if (!handler) {
         throw new Error(`No handler registered for ${event}`);
@@ -87,8 +130,12 @@ test("join-room emits room-ready only after both roles are present", () => {
   const sender = createFakeSocket("sender-1");
   const receiver = createFakeSocket("receiver-1");
 
-  registerSocketHandlers(io, sender, registry);
-  registerSocketHandlers(io, receiver, registry);
+  registerSocketHandlers(io as RegisterSocketIo, sender as RegisterSocket, registry);
+  registerSocketHandlers(
+    io as RegisterSocketIo,
+    receiver as RegisterSocket,
+    registry
+  );
 
   sender.trigger("join-room", { room: "room-1", role: "sender" });
   assert.deepEqual(io.emitted, []);
@@ -109,7 +156,7 @@ test("receiver join is rejected when no sender exists", () => {
   const registry = createRoomRegistry();
   const receiver = createFakeSocket("receiver-1");
 
-  registerSocketHandlers(io, receiver, registry);
+  registerSocketHandlers(io as RegisterSocketIo, receiver as RegisterSocket, registry);
   receiver.trigger("join-room", { room: "missing", role: "receiver" });
 
   assert.deepEqual(receiver.emitted, [
@@ -126,8 +173,12 @@ test("disconnect emits peer-left and clears the role", () => {
   const sender = createFakeSocket("sender-1");
   const receiver = createFakeSocket("receiver-1");
 
-  registerSocketHandlers(io, sender, registry);
-  registerSocketHandlers(io, receiver, registry);
+  registerSocketHandlers(io as RegisterSocketIo, sender as RegisterSocket, registry);
+  registerSocketHandlers(
+    io as RegisterSocketIo,
+    receiver as RegisterSocket,
+    registry
+  );
 
   sender.trigger("join-room", { room: "room-1", role: "sender" });
   receiver.trigger("join-room", { room: "room-1", role: "receiver" });
@@ -140,7 +191,7 @@ test("disconnect emits peer-left and clears the role", () => {
       payload: { room: "room-1", role: "receiver" },
     },
   ]);
-  assert.equal(registry.getRoom("room-1").participants.receiver, null);
+  assert.equal(registry.getRoom("room-1")?.participants.receiver, null);
 });
 
 test("ws-ping responds with ws-pong", () => {
@@ -148,12 +199,18 @@ test("ws-ping responds with ws-pong", () => {
   const registry = createRoomRegistry();
   const sender = createFakeSocket("sender-1");
 
-  registerSocketHandlers(io, sender, registry);
+  registerSocketHandlers(io as RegisterSocketIo, sender as RegisterSocket, registry);
   sender.trigger("ws-ping", { sentAt: 1234 });
 
-  assert.equal(sender.emitted[0].event, "ws-pong");
-  assert.equal(sender.emitted[0].payload.sentAt, 1234);
-  assert.equal(typeof sender.emitted[0].payload.serverTime, "number");
+  assert.equal(sender.emitted[0]?.event, "ws-pong");
+  assert.equal(
+    (sender.emitted[0]?.payload as { sentAt: number }).sentAt,
+    1234
+  );
+  assert.equal(
+    typeof (sender.emitted[0]?.payload as { serverTime: number }).serverTime,
+    "number"
+  );
 });
 
 test("peer-transport-state relays to the other participant", () => {
@@ -161,7 +218,7 @@ test("peer-transport-state relays to the other participant", () => {
   const registry = createRoomRegistry();
   const sender = createFakeSocket("sender-1");
 
-  registerSocketHandlers(io, sender, registry);
+  registerSocketHandlers(io as RegisterSocketIo, sender as RegisterSocket, registry);
   sender.trigger("peer-transport-state", {
     room: "room-1",
     role: "sender",

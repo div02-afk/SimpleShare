@@ -143,9 +143,9 @@ export default function Send() {
     transferStatus === "fallback-buffering";
 
   return (
-    <div className="h-screen bg-black pt-2 font-mono text-white">
-      <div className="mb-20">
-        <h1 className="mb-20 text-center text-3xl">Send Anything</h1>
+    <div className="bg-black pt-2 font-mono text-white min-h-screen">
+      <div className="mb-10">
+        <h1 className="my-10 text-center text-3xl">Send Anything</h1>
         <p className="text-center">
           Share this to the receiver <br />
           <span
@@ -175,7 +175,7 @@ export default function Send() {
           <div className="flex w-full items-center justify-center">
             <div
               {...getRootProps()}
-              className="h-44 w-[70%] max-w-[600px] rounded-2xl bg-gray-500"
+              className="h-44 w-[70%] max-w-150 rounded-2xl bg-gray-500"
             >
               <input {...getInputProps()} />
               <div className="mt-10" />
