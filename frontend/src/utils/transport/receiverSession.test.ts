@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { TransferMetadata } from "../../types/transfer";
+import { createDataFrame } from "./frameProtocol";
 import type { TransferStoreAdapter } from "./types";
 import ReceiverSession from "./receiverSession";
 
@@ -67,6 +68,20 @@ class MockWriter {
   abort = vi.fn(async () => {});
 }
 
+class MockCompressionAdapter {
+  isSupported = vi.fn(() => true);
+
+  deflate = vi.fn(async (chunk: Uint8Array) => chunk);
+
+  inflate = vi.fn(async (chunk: Uint8Array, originalByteLength: number) => {
+    if (originalByteLength === 5) {
+      return new Uint8Array([1, 2, 3, 4, 5]);
+    }
+
+    return chunk;
+  });
+}
+
 function createStoreAdapter(): TransferStoreAdapter {
   return {
     setConnected: vi.fn(),
@@ -88,10 +103,11 @@ function createStoreAdapter(): TransferStoreAdapter {
 const metadata: TransferMetadata = {
   room: "room-123",
   type: "text/plain",
-  size: 5,
+  size: 8,
   name: "hello.txt",
   chunkSize: 5,
   totalChunks: 2,
+  compressionMode: "adaptive-deflate-v1",
 };
 
 describe("ReceiverSession", () => {
@@ -117,10 +133,12 @@ describe("ReceiverSession", () => {
     const signaling = new MockSignalingClient();
     const peerMesh = new MockPeerMesh();
     const fallbackWriter = new MockWriter("blob-fallback");
+    const compressionAdapter = new MockCompressionAdapter();
     const session = new ReceiverSession(store, {}, {
       createSignalingClient: () => signaling as never,
       createPeerMesh: () => peerMesh as never,
       createFallbackWriter: () => fallbackWriter as never,
+      compressionAdapter: compressionAdapter as never,
     });
 
     vi.spyOn(session, "supportsDirectFileWrite").mockReturnValue(false);
@@ -132,19 +150,25 @@ describe("ReceiverSession", () => {
     expect(fallbackWriter.prepare).toHaveBeenCalledWith(metadata);
     expect(signaling.emitted).toContainEqual({
       event: "receiver-ready",
-      payload: { room: "room-123", writeMode: "blob-fallback" },
+      payload: {
+        room: "room-123",
+        writeMode: "blob-fallback",
+        compressionMode: "adaptive-deflate-v1",
+      },
     });
   });
 
-  it("flushes ordered chunks and completes the transfer", async () => {
+  it("flushes ordered raw and compressed chunks and completes the transfer", async () => {
     const store = createStoreAdapter();
     const signaling = new MockSignalingClient();
     const peerMesh = new MockPeerMesh();
     const fallbackWriter = new MockWriter("blob-fallback");
+    const compressionAdapter = new MockCompressionAdapter();
     const session = new ReceiverSession(store, {}, {
       createSignalingClient: () => signaling as never,
       createPeerMesh: () => peerMesh as never,
       createFallbackWriter: () => fallbackWriter as never,
+      compressionAdapter: compressionAdapter as never,
     });
 
     vi.spyOn(session, "supportsDirectFileWrite").mockReturnValue(false);
@@ -154,22 +178,20 @@ describe("ReceiverSession", () => {
     await session.prepareDownload();
 
     const internal = session as unknown as {
-      handleDataMessage: (message: unknown) => Promise<void>;
+      handleChannelMessage: (
+        message: Blob | string | ArrayBuffer | ArrayBufferView
+      ) => Promise<void>;
     };
 
-    await internal.handleDataMessage({
-      type: "data",
-      index: 1,
-      byteLength: 2,
-      data: new Uint8Array([4, 5]),
-    });
-    await internal.handleDataMessage({
-      type: "data",
-      index: 0,
-      byteLength: 3,
-      data: new Uint8Array([1, 2, 3]),
-    });
-    await internal.handleDataMessage({
+    await internal.handleChannelMessage(
+      createDataFrame(1, new Uint8Array([9, 9]), "deflate", 5)
+    );
+    await internal.handleChannelMessage(
+      createDataFrame(0, new Uint8Array([1, 2, 3]), "raw")
+    );
+    await (session as unknown as {
+      handleDataMessage: (message: unknown) => Promise<void>;
+    }).handleDataMessage({
       type: "complete",
       totalChunks: 2,
     });
@@ -178,10 +200,58 @@ describe("ReceiverSession", () => {
     }).transferSession.flushPromise;
 
     expect(fallbackWriter.writeChunk).toHaveBeenCalledTimes(2);
+    expect(fallbackWriter.writeChunk).toHaveBeenNthCalledWith(
+      1,
+      new Uint8Array([1, 2, 3])
+    );
+    expect(fallbackWriter.writeChunk).toHaveBeenNthCalledWith(
+      2,
+      new Uint8Array([1, 2, 3, 4, 5])
+    );
     expect(fallbackWriter.finalize).toHaveBeenCalled();
+    expect(signaling.emitted).toContainEqual({
+      event: "received",
+      payload: {
+        room: "room-123",
+        logicalBytesReceived: 8,
+        wireBytesReceived: 33,
+      },
+    });
     expect(signaling.emitted).toContainEqual({
       event: "transfer-complete",
       payload: { room: "room-123" },
     });
+  });
+
+  it("fails the transfer when decompression fails", async () => {
+    const store = createStoreAdapter();
+    const signaling = new MockSignalingClient();
+    const peerMesh = new MockPeerMesh();
+    const fallbackWriter = new MockWriter("blob-fallback");
+    const compressionAdapter = new MockCompressionAdapter();
+    compressionAdapter.inflate = vi.fn(async () => {
+      throw new Error("bad deflate");
+    });
+    const session = new ReceiverSession(store, {}, {
+      createSignalingClient: () => signaling as never,
+      createPeerMesh: () => peerMesh as never,
+      createFallbackWriter: () => fallbackWriter as never,
+      compressionAdapter: compressionAdapter as never,
+    });
+
+    vi.spyOn(session, "supportsDirectFileWrite").mockReturnValue(false);
+
+    await session.connect("room-123");
+    await signaling.trigger("metadata", metadata);
+    await session.prepareDownload();
+
+    await (session as unknown as {
+      handleChannelMessage: (
+        message: Blob | string | ArrayBuffer | ArrayBufferView
+      ) => Promise<void>;
+    }).handleChannelMessage(createDataFrame(0, new Uint8Array([9, 9]), "deflate", 5));
+
+    expect(store.setTransferStatus).toHaveBeenCalledWith("failed");
+    expect(store.setTransferError).toHaveBeenCalledWith("bad deflate");
   });
 });

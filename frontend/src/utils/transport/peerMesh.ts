@@ -112,7 +112,7 @@ export class PeerMesh implements PeerMeshLike {
     await this.waitForInFlightBytes(this.config.totalBufferedLowWaterMark);
   }
 
-  async sendFrame(frame: ArrayBuffer, payloadBytes: number): Promise<void> {
+  async sendFrame(frame: ArrayBuffer, accountedWireBytes = frame.byteLength): Promise<void> {
     const channel = this.getNextOpenChannel();
     if (!channel) {
       throw new Error("No open data channels are available for transfer.");
@@ -123,7 +123,7 @@ export class PeerMesh implements PeerMeshLike {
     }
 
     channel.send(frame);
-    this.bytesSent += payloadBytes;
+    this.bytesSent += accountedWireBytes;
   }
 
   dispose(error = new Error("Transport mesh disposed.")): void {

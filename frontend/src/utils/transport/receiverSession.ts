@@ -1,4 +1,14 @@
-import type { TransferMetadata, WriteMode } from "../../types/transfer";
+import type {
+  CompressionMode,
+  TransferMetadata,
+  WriteMode,
+} from "../../types/transfer";
+import {
+  DEFAULT_COMPRESSION_MODE,
+  FflateCompressionAdapter,
+  type CompressionAdapter,
+  resolveCompressionMode,
+} from "./compression";
 import {
   DEFAULT_CHUNK_SIZE,
   DEFAULT_DATA_CHANNELS_PER_CONNECTION,
@@ -9,7 +19,7 @@ import {
   TOTAL_BUFFERED_HIGH_WATER_MARK,
   TOTAL_BUFFERED_LOW_WATER_MARK,
 } from "./config";
-import { parseFrame } from "./frameProtocol";
+import { getDataFrameByteLength, parseFrame } from "./frameProtocol";
 import PeerMesh from "./peerMesh";
 import {
   BlobFallbackWriter,
@@ -43,6 +53,7 @@ interface ReceiverTransferSession {
   pendingChunksByIndex: Map<number, Uint8Array>;
   receivedChunkCount: number;
   receivedBytes: number;
+  receivedWireBytes: number;
   bytesWritten: number;
   expectedTotalChunks: number | null;
   completionReceived: boolean;
@@ -57,6 +68,7 @@ interface ReceiverSessionDependencies {
   createPeerMesh?: (config: TransportConfig, roomId: string) => PeerMeshLike;
   createStreamWriter?: () => TransferWriter;
   createFallbackWriter?: () => TransferWriter;
+  compressionAdapter?: CompressionAdapter;
 }
 
 const defaultTransportConfig: TransportConfig = {
@@ -81,6 +93,7 @@ function createTransferSession(
     pendingChunksByIndex: new Map(),
     receivedChunkCount: 0,
     receivedBytes: 0,
+    receivedWireBytes: 0,
     bytesWritten: 0,
     expectedTotalChunks: metadata?.totalChunks ?? null,
     completionReceived: false,
@@ -107,6 +120,8 @@ export class ReceiverSession {
 
   private readonly createFallbackWriter: () => TransferWriter;
 
+  private readonly compressionAdapter: CompressionAdapter;
+
   private roomId: string | null = null;
 
   private signalingClient: SignalingClientLike | null = null;
@@ -122,6 +137,8 @@ export class ReceiverSession {
   ) {
     this.store = store;
     this.config = { ...defaultTransportConfig, ...config };
+    this.compressionAdapter =
+      dependencies.compressionAdapter ?? new FflateCompressionAdapter();
     this.createSignalingClient =
       dependencies.createSignalingClient ?? (() => new SignalingClient());
     this.createPeerMesh =
@@ -203,6 +220,10 @@ export class ReceiverSession {
       this.signalingClient.emit("receiver-ready", {
         room: this.roomId,
         writeMode: writer.writeMode,
+        compressionMode: resolveCompressionMode(
+          metadata.compressionMode,
+          this.getAcceptedCompressionMode(metadata.compressionMode)
+        ),
       });
     } catch (error) {
       const errorMessage =
@@ -284,6 +305,19 @@ export class ReceiverSession {
 
     try {
       const message = await parseFrame(data);
+      if (message.type === "data" && message.encoding === "deflate") {
+        const inflatedChunk = await this.compressionAdapter.inflate(
+          message.data,
+          message.originalByteLength
+        );
+        await this.handleDataMessage({
+          ...message,
+          data: inflatedChunk,
+          encoding: "raw",
+        });
+        return;
+      }
+
       await this.handleDataMessage(message);
     } catch (error) {
       const errorMessage =
@@ -319,7 +353,10 @@ export class ReceiverSession {
 
     this.transferSession.pendingChunksByIndex.set(message.index, message.data);
     this.transferSession.receivedChunkCount += 1;
-    this.transferSession.receivedBytes += message.byteLength;
+    this.transferSession.receivedBytes += message.originalByteLength;
+    this.transferSession.receivedWireBytes += getDataFrameByteLength(
+      message.wireByteLength
+    );
     this.store.markReceiveStarted();
     this.store.setSizeReceived(this.transferSession.receivedBytes);
     this.syncTransferState();
@@ -327,7 +364,8 @@ export class ReceiverSession {
     if (this.signalingClient && this.roomId) {
       this.signalingClient.emit("received", {
         room: this.roomId,
-        data: this.transferSession.receivedBytes,
+        logicalBytesReceived: this.transferSession.receivedBytes,
+        wireBytesReceived: this.transferSession.receivedWireBytes,
       });
     }
 
@@ -474,6 +512,19 @@ export class ReceiverSession {
     } finally {
       this.transferSession.writer = null;
     }
+  }
+
+  private getAcceptedCompressionMode(
+    requestedCompressionMode?: CompressionMode
+  ): CompressionMode {
+    if (
+      requestedCompressionMode === DEFAULT_COMPRESSION_MODE &&
+      this.compressionAdapter.isSupported()
+    ) {
+      return DEFAULT_COMPRESSION_MODE;
+    }
+
+    return "none";
   }
 
   private syncTransferState(): void {

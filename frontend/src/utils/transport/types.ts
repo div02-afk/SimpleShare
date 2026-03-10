@@ -1,10 +1,12 @@
 import type {
+  CompressionMode,
   TransferMetadata,
   TransferStatus,
   WriteMode,
 } from "../../types/transfer";
 
 export type TransportRole = "sender" | "receiver";
+export type ChunkEncoding = "raw" | "deflate";
 
 export interface OfferPayload {
   room: string;
@@ -28,6 +30,7 @@ export interface IceCandidatePayload {
 export interface ReceiverReadyPayload {
   room: string;
   writeMode: WriteMode;
+  compressionMode?: CompressionMode;
 }
 
 export interface ReceiverErrorPayload {
@@ -41,7 +44,8 @@ export interface RoomPayload {
 
 export interface ReceivedPayload {
   room: string;
-  data: number;
+  logicalBytesReceived: number;
+  wireBytesReceived: number;
 }
 
 export interface ClientToServerEvents {
@@ -66,7 +70,7 @@ export interface ServerToClientEvents {
   "receiver-error": (payload: ReceiverErrorPayload) => void;
   "receiver-finalizing": (payload: RoomPayload) => void;
   "transfer-complete": (payload: RoomPayload) => void;
-  received: (bytesReceived: number) => void;
+  received: (payload: ReceivedPayload) => void;
   "room-full": () => void;
   disconnect: () => void;
 }
@@ -155,7 +159,7 @@ export interface PeerMeshLike {
     connectionId: number,
     candidate: RTCIceCandidateInit
   ): Promise<void>;
-  sendFrame(frame: ArrayBuffer, payloadBytes: number): Promise<void>;
+  sendFrame(frame: ArrayBuffer, accountedWireBytes?: number): Promise<void>;
   waitForGlobalDrain(): Promise<void>;
   noteBytesAcknowledged(bytesAcknowledged: number): void;
   dispose(error?: Error): void;
@@ -175,7 +179,9 @@ export interface TransportConfig {
 export interface DataFrameMessage {
   type: "data";
   index: number;
-  byteLength: number;
+  encoding: ChunkEncoding;
+  wireByteLength: number;
+  originalByteLength: number;
   data: Uint8Array;
 }
 

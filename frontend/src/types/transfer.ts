@@ -10,6 +10,8 @@ export type TransferStatus =
 
 export type WriteMode = "stream" | "blob-fallback";
 
+export type CompressionMode = "none" | "adaptive-deflate-v1";
+
 export interface TransferMetadata {
   room: string;
   type: string;
@@ -17,6 +19,7 @@ export interface TransferMetadata {
   name: string;
   chunkSize: number;
   totalChunks: number;
+  compressionMode?: CompressionMode;
 }
 
 export interface TransferState {

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { parseFrame } from "./frameProtocol";
 import type { TransferStoreAdapter } from "./types";
 import SenderSession from "./senderSession";
 
@@ -54,6 +55,25 @@ class MockPeerMesh {
   dispose = vi.fn();
 }
 
+class MockCompressionAdapter {
+  constructor(
+    private readonly results: Uint8Array[] = [],
+    private readonly supported = true
+  ) {}
+
+  private index = 0;
+
+  isSupported = vi.fn(() => this.supported);
+
+  deflate = vi.fn(async (chunk: Uint8Array) => {
+    const next = this.results[this.index];
+    this.index += 1;
+    return next ?? chunk;
+  });
+
+  inflate = vi.fn(async (chunk: Uint8Array) => chunk);
+}
+
 function createStoreAdapter(): TransferStoreAdapter {
   return {
     setConnected: vi.fn(),
@@ -70,6 +90,26 @@ function createStoreAdapter(): TransferStoreAdapter {
     updateTransfer: vi.fn(),
     resetTransfer: vi.fn(),
   };
+}
+
+async function flushMicrotasks(iterations = 20): Promise<void> {
+  for (let index = 0; index < iterations; index += 1) {
+    await Promise.resolve();
+  }
+}
+
+async function waitForMockCalls(
+  mockFn: { mock: { calls: unknown[][] } },
+  expectedCalls: number,
+  iterations = 200
+): Promise<void> {
+  for (let index = 0; index < iterations; index += 1) {
+    if (mockFn.mock.calls.length >= expectedCalls) {
+      return;
+    }
+
+    await Promise.resolve();
+  }
 }
 
 describe("SenderSession", () => {
@@ -116,9 +156,55 @@ describe("SenderSession", () => {
     const store = createStoreAdapter();
     const signaling = new MockSignalingClient();
     const peerMesh = new MockPeerMesh();
+    const compressionAdapter = new MockCompressionAdapter([
+      new Uint8Array([120, 1]),
+    ]);
     const session = new SenderSession(store, {}, {
       createSignalingClient: () => signaling as never,
       createPeerMesh: () => peerMesh as never,
+      compressionAdapter: compressionAdapter as never,
+    });
+
+    await session.init();
+    await session.sendFile(
+      new File([new Uint8Array(2048)], "hello.txt", { type: "text/plain" })
+    );
+    await signaling.trigger("receiver-ready", {
+      room: "room-123",
+      writeMode: "stream",
+      compressionMode: "adaptive-deflate-v1",
+    });
+    await waitForMockCalls(peerMesh.sendFrame, 2);
+
+    expect(peerMesh.sendFrame).toHaveBeenCalled();
+    expect(store.setTransferStatus).toHaveBeenCalledWith("streaming-direct-write");
+
+    const firstCall = peerMesh.sendFrame.mock.calls[0] as unknown as [
+      ArrayBuffer,
+      number
+    ];
+    expect(firstCall).toBeDefined();
+    const firstFrame = firstCall[0];
+    const parsed = await parseFrame(firstFrame);
+    expect(parsed.type).toBe("data");
+    if (parsed.type === "data") {
+      expect(parsed.encoding).toBe("deflate");
+      expect(parsed.originalByteLength).toBe(2048);
+      expect(parsed.wireByteLength).toBe(2);
+    }
+  });
+
+  it("falls back to raw frames when the receiver does not accept compression", async () => {
+    const store = createStoreAdapter();
+    const signaling = new MockSignalingClient();
+    const peerMesh = new MockPeerMesh();
+    const compressionAdapter = new MockCompressionAdapter([
+      new Uint8Array([120, 1]),
+    ]);
+    const session = new SenderSession(store, {}, {
+      createSignalingClient: () => signaling as never,
+      createPeerMesh: () => peerMesh as never,
+      compressionAdapter: compressionAdapter as never,
     });
 
     await session.init();
@@ -126,11 +212,68 @@ describe("SenderSession", () => {
     await signaling.trigger("receiver-ready", {
       room: "room-123",
       writeMode: "stream",
+      compressionMode: "none",
     });
-    await Promise.resolve();
-    await Promise.resolve();
+    await flushMicrotasks();
 
-    expect(peerMesh.sendFrame).toHaveBeenCalled();
-    expect(store.setTransferStatus).toHaveBeenCalledWith("streaming-direct-write");
+    expect(compressionAdapter.deflate).not.toHaveBeenCalled();
+
+    const firstCall = peerMesh.sendFrame.mock.calls[0] as unknown as [
+      ArrayBuffer,
+      number
+    ];
+    expect(firstCall).toBeDefined();
+    const firstFrame = firstCall[0];
+    const parsed = await parseFrame(firstFrame);
+    expect(parsed.type).toBe("data");
+    if (parsed.type === "data") {
+      expect(parsed.encoding).toBe("raw");
+      expect(parsed.originalByteLength).toBe(5);
+      expect(parsed.wireByteLength).toBe(5);
+    }
+  });
+
+  it("disables compression for the remainder of the file when early chunks compress poorly", async () => {
+    const store = createStoreAdapter();
+    const signaling = new MockSignalingClient();
+    const peerMesh = new MockPeerMesh();
+    const compressionAdapter = new MockCompressionAdapter(
+      Array.from({ length: 8 }, () => new Uint8Array(127 * 1024))
+    );
+    const session = new SenderSession(store, { chunkSize: 128 * 1024 }, {
+      createSignalingClient: () => signaling as never,
+      createPeerMesh: () => peerMesh as never,
+      compressionAdapter: compressionAdapter as never,
+    });
+
+    await session.init();
+    await session.sendFile(
+      new File([new Uint8Array(9 * 128 * 1024)], "large.txt", {
+        type: "text/plain",
+      })
+    );
+    await signaling.trigger("receiver-ready", {
+      room: "room-123",
+      writeMode: "stream",
+      compressionMode: "adaptive-deflate-v1",
+    });
+    await waitForMockCalls(compressionAdapter.deflate, 8);
+    await waitForMockCalls(peerMesh.sendFrame, 10);
+
+    expect(compressionAdapter.deflate).toHaveBeenCalledTimes(8);
+    expect(peerMesh.sendFrame).toHaveBeenCalledTimes(10);
+
+    const ninthCall = peerMesh.sendFrame.mock.calls[8] as unknown as [
+      ArrayBuffer,
+      number
+    ];
+    expect(ninthCall).toBeDefined();
+    const ninthDataFrame = ninthCall[0];
+    const parsed = await parseFrame(ninthDataFrame);
+    expect(parsed.type).toBe("data");
+    if (parsed.type === "data") {
+      expect(parsed.encoding).toBe("raw");
+      expect(parsed.originalByteLength).toBe(128 * 1024);
+    }
   });
 });

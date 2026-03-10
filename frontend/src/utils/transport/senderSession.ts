@@ -1,4 +1,14 @@
-import type { TransferMetadata } from "../../types/transfer";
+import type { CompressionMode, TransferMetadata } from "../../types/transfer";
+import {
+  createCompressionProbeState,
+  DEFAULT_COMPRESSION_MODE,
+  FflateCompressionAdapter,
+  isCompressionEligibleFile,
+  type CompressionAdapter,
+  type CompressionProbeState,
+  resolveCompressionMode,
+  shouldUseCompressedChunk,
+} from "./compression";
 import {
   DEFAULT_CHUNK_SIZE,
   DEFAULT_DATA_CHANNELS_PER_CONNECTION,
@@ -9,7 +19,11 @@ import {
   TOTAL_BUFFERED_HIGH_WATER_MARK,
   TOTAL_BUFFERED_LOW_WATER_MARK,
 } from "./config";
-import { createCompleteFrame, createDataFrame } from "./frameProtocol";
+import {
+  createCompleteFrame,
+  createDataFrame,
+  getDataFrameByteLength,
+} from "./frameProtocol";
 import PeerMesh from "./peerMesh";
 import SignalingClient from "./signalingClient";
 import type {
@@ -27,6 +41,7 @@ interface TimerApi {
 interface SenderSessionDependencies {
   createSignalingClient?: () => SignalingClientLike;
   createPeerMesh?: (config: TransportConfig, roomId: string) => PeerMeshLike;
+  compressionAdapter?: CompressionAdapter;
   timerApi?: TimerApi;
 }
 
@@ -55,6 +70,8 @@ export class SenderSession {
     roomId: string
   ) => PeerMeshLike;
 
+  private readonly compressionAdapter: CompressionAdapter;
+
   private signalingClient: SignalingClientLike | null = null;
 
   private peerMesh: PeerMeshLike | null = null;
@@ -71,6 +88,11 @@ export class SenderSession {
 
   private initPromise: Promise<{ roomId: string }> | null = null;
 
+  private activeCompressionMode: CompressionMode = "none";
+
+  private compressionProbeState: CompressionProbeState =
+    createCompressionProbeState();
+
   private disposed = false;
 
   constructor(
@@ -81,6 +103,8 @@ export class SenderSession {
     this.store = store;
     this.config = { ...defaultTransportConfig, ...config };
     this.timerApi = dependencies.timerApi ?? { setTimeout, clearTimeout };
+    this.compressionAdapter =
+      dependencies.compressionAdapter ?? new FflateCompressionAdapter();
     this.createSignalingClient =
       dependencies.createSignalingClient ?? (() => new SignalingClient());
     this.createPeerMesh =
@@ -178,6 +202,8 @@ export class SenderSession {
     this.store.resetTransfer();
     this.pendingFile = file;
     this.receiverReady = false;
+    this.activeCompressionMode = "none";
+    this.compressionProbeState = createCompressionProbeState();
     this.currentMetadata = {
       room: this.roomId,
       type: file.type,
@@ -185,6 +211,11 @@ export class SenderSession {
       name: file.name,
       chunkSize: this.config.chunkSize,
       totalChunks: Math.ceil(file.size / this.config.chunkSize),
+      compressionMode:
+        this.compressionAdapter.isSupported() &&
+        isCompressionEligibleFile(file.name, file.type)
+          ? DEFAULT_COMPRESSION_MODE
+          : "none",
     };
 
     this.store.setTransferSize(file.size);
@@ -202,6 +233,8 @@ export class SenderSession {
 
       this.pendingFile = null;
       this.currentMetadata = null;
+      this.activeCompressionMode = "none";
+      this.compressionProbeState = createCompressionProbeState();
       this.store.setTransferStatus("failed");
       this.store.setTransferError("Receiver did not choose a destination in time.");
     }, this.config.receiverReadyTimeoutMs);
@@ -213,6 +246,8 @@ export class SenderSession {
     this.pendingFile = null;
     this.currentMetadata = null;
     this.receiverReady = false;
+    this.activeCompressionMode = "none";
+    this.compressionProbeState = createCompressionProbeState();
     this.peerMesh?.dispose();
     this.peerMesh = null;
     this.signalingClient?.dispose();
@@ -230,7 +265,7 @@ export class SenderSession {
       void this.peerMesh?.applyAnswer(payload.connectionId, payload.answer);
     });
     this.signalingClient.on("receiver-ready", (payload) => {
-      this.handleReceiverReady(payload.writeMode);
+      this.handleReceiverReady(payload.writeMode, payload.compressionMode);
     });
     this.signalingClient.on("receiver-error", (payload) => {
       this.handleTransferFailure(payload.error);
@@ -250,13 +285,18 @@ export class SenderSession {
 
       this.currentMetadata = null;
       this.pendingFile = null;
+      this.activeCompressionMode = "none";
+      this.compressionProbeState = createCompressionProbeState();
       this.store.setTransferStatus("completed");
       this.store.setTransferError(null);
     });
-    this.signalingClient.on("received", (bytesReceived) => {
-      this.peerMesh?.noteBytesAcknowledged(bytesReceived);
-      this.store.setSizeReceived(bytesReceived);
-      if (this.currentMetadata && bytesReceived >= this.currentMetadata.size) {
+    this.signalingClient.on("received", (payload) => {
+      this.peerMesh?.noteBytesAcknowledged(payload.wireBytesReceived);
+      this.store.setSizeReceived(payload.logicalBytesReceived);
+      if (
+        this.currentMetadata &&
+        payload.logicalBytesReceived >= this.currentMetadata.size
+      ) {
         this.store.setTransferStatus("finalizing-write");
         this.store.setTransferError(null);
       }
@@ -291,12 +331,19 @@ export class SenderSession {
     }
   }
 
-  private handleReceiverReady(writeMode: "stream" | "blob-fallback"): void {
-    if (!this.pendingFile) {
+  private handleReceiverReady(
+    writeMode: "stream" | "blob-fallback",
+    acceptedCompressionMode?: CompressionMode
+  ): void {
+    if (!this.pendingFile || !this.currentMetadata) {
       return;
     }
 
     this.receiverReady = true;
+    this.activeCompressionMode = resolveCompressionMode(
+      this.currentMetadata.compressionMode,
+      acceptedCompressionMode
+    );
     this.clearReceiverReadyTimeout();
     this.store.setWriteMode(writeMode);
     this.store.setTransferStatus(
@@ -325,8 +372,15 @@ export class SenderSession {
 
         const slice = file.slice(offset, offset + this.currentMetadata.chunkSize);
         const buffer = await slice.arrayBuffer();
-        const frame = createDataFrame(index, buffer);
-        await this.peerMesh.sendFrame(frame, buffer.byteLength);
+        const chunk = new Uint8Array(buffer);
+        const { encoding, payload } = await this.prepareChunkForTransfer(chunk);
+        const frame = createDataFrame(
+          index,
+          payload,
+          encoding,
+          chunk.byteLength
+        );
+        await this.peerMesh.sendFrame(frame, getDataFrameByteLength(payload.byteLength));
 
         index += 1;
         offset += this.currentMetadata.chunkSize;
@@ -344,11 +398,50 @@ export class SenderSession {
     }
   }
 
+  private async prepareChunkForTransfer(
+    chunk: Uint8Array
+  ): Promise<{ encoding: "raw" | "deflate"; payload: Uint8Array }> {
+    if (
+      this.activeCompressionMode !== DEFAULT_COMPRESSION_MODE ||
+      this.compressionProbeState.disabledForRemainder
+    ) {
+      return {
+        encoding: "raw",
+        payload: chunk,
+      };
+    }
+
+    const compressedChunk = await this.compressionAdapter.deflate(chunk);
+    const decision = shouldUseCompressedChunk(
+      this.compressionProbeState,
+      chunk.byteLength,
+      compressedChunk.byteLength
+    );
+
+    if (decision.shouldDisableFutureCompression) {
+      this.activeCompressionMode = "none";
+    }
+
+    if (!decision.useCompressed) {
+      return {
+        encoding: "raw",
+        payload: chunk,
+      };
+    }
+
+    return {
+      encoding: "deflate",
+      payload: compressedChunk,
+    };
+  }
+
   private handleTransferFailure(errorMessage: string): void {
     this.clearReceiverReadyTimeout();
     this.pendingFile = null;
     this.currentMetadata = null;
     this.receiverReady = false;
+    this.activeCompressionMode = "none";
+    this.compressionProbeState = createCompressionProbeState();
     this.peerMesh?.dispose(new Error(errorMessage));
     this.store.setTransferStatus("failed");
     this.store.setTransferError(errorMessage);

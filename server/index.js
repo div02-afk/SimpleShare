@@ -57,7 +57,7 @@ io.on("connection", (socket) => {
     socket.to(data.room).emit("transfer-complete", data);
   });
   socket.on("received", (data) => {
-    socket.to(data.room).emit("received", data.data);
+    socket.to(data.room).emit("received", data);
   });
   socket.on("disconnect", () => {
     console.log("user disconnected");
