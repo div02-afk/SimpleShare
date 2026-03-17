@@ -20,6 +20,16 @@ We welcome contributions to improve this project! Here are some ways you can con
 - Submit feature requests
 - Create pull requests to fix bugs or add new features
 
+## Development
+
+The frontend WebRTC STUN list in `frontend/src/utils/servers.txt` and `frontend/src/utils/servers.json` is generated, not meant to be edited by hand.
+
+- Refresh it locally with `cd frontend && npm run update:stun-servers`
+- Verify it is up to date with `cd frontend && npm run check:stun-servers`
+- Override the upstream source when needed with `STUN_SOURCE_URL=<raw-list-url>`
+
+The repository also includes a scheduled GitHub Actions workflow that runs this update automatically and opens a pull request when the generated files change.
+
 ## License
 
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.

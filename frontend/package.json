@@ -11,6 +11,8 @@
     "build": "vite build",
     "lint": "eslint . --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
+    "update:stun-servers": "node ./scripts/update-stun-servers.mjs",
+    "check:stun-servers": "node ./scripts/update-stun-servers.mjs --check",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
