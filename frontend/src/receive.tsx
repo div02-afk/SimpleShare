@@ -420,10 +420,6 @@ export default function Receive() {
         )}
       </AnimatePresence>
 
-      {transferStatus === "failed" && transferError && (
-        <div className="mt-8 text-red-400">{transferError}</div>
-      )}
-
       <GitHubLink />
       {/* <ToastNotification
         isModalVisible={isModalVisible}
