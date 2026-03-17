@@ -6,6 +6,7 @@ const createTransferState = (): TransferState => ({
   signalingStatus: "connecting",
   signalingLatencyMs: null,
   peerStatus: "waiting",
+  connectionStage: "idle",
   sizeReceived: 0,
   bytesWritten: 0,
   transferSize: 0,
@@ -31,6 +32,9 @@ export const useTransferStore = create<TransferStore>((set) => ({
   },
   setPeerStatus: (peerStatus) => {
     set({ peerStatus });
+  },
+  setConnectionStage: (connectionStage) => {
+    set({ connectionStage });
   },
   setMetadata: (metadata) => {
     set({ metadata });
@@ -77,6 +81,7 @@ export const useTransferStore = create<TransferStore>((set) => ({
       signalingStatus: state.signalingStatus,
       signalingLatencyMs: state.signalingLatencyMs,
       peerStatus: state.peerStatus,
+      connectionStage: state.connectionStage,
     }));
   },
 }));

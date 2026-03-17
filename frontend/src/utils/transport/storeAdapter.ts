@@ -15,6 +15,9 @@ export function createTransferStoreAdapter(): TransferStoreAdapter {
     setPeerStatus: (peerStatus) => {
       useTransferStore.getState().setPeerStatus(peerStatus);
     },
+    setConnectionStage: (connectionStage) => {
+      useTransferStore.getState().setConnectionStage(connectionStage);
+    },
     setMetadata: (metadata) => {
       useTransferStore.getState().setMetadata(metadata);
     },

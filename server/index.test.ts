@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import test from "node:test";
 import {
+  createHttpApp,
   createRoomRegistry,
   registerSocketHandlers,
-} from "./index.js";
+} from "./src/index.js";
 
 type RegisterSocketIo = Parameters<typeof registerSocketHandlers>[0];
 type RegisterSocket = Parameters<typeof registerSocketHandlers>[1];
@@ -96,6 +99,36 @@ function createFakeSocket(id = "socket-1") {
 
       return handler(payload);
     },
+  };
+}
+
+async function createHttpTestServer(
+  getIceServers: () => Promise<RTCIceServer[]>
+): Promise<{ close: () => Promise<void>; url: string }> {
+  const app = createHttpApp({ getIceServers });
+  const server = createServer(app);
+
+  await new Promise<void>((resolve) => {
+    server.listen(0, "127.0.0.1", () => {
+      resolve();
+    });
+  });
+
+  const address = server.address() as AddressInfo;
+
+  return {
+    url: `http://127.0.0.1:${address.port}`,
+    close: () =>
+      new Promise<void>((resolve, reject) => {
+        server.close((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+
+          resolve();
+        });
+      }),
   };
 }
 
@@ -236,4 +269,62 @@ test("peer-transport-state relays to the other participant", () => {
       },
     },
   ]);
+});
+
+test("GET /ice-servers returns the raw ICE server array", async () => {
+  const expectedIceServers: RTCIceServer[] = [
+    {
+      urls: [
+        "stun:stun.cloudflare.com:3478",
+        "stun:stun.cloudflare.com:53",
+      ],
+    },
+    {
+      urls: [
+        "turn:turn.cloudflare.com:3478?transport=udp",
+        "turn:turn.cloudflare.com:3478?transport=tcp",
+      ],
+      username: "user",
+      credential: "credential",
+    },
+  ];
+  const server = await createHttpTestServer(async () => expectedIceServers);
+
+  try {
+    const response = await fetch(`${server.url}/ice-servers`);
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), expectedIceServers);
+  } finally {
+    await server.close();
+  }
+});
+
+test("GET /ice-servers returns 500 when fetching ICE servers fails", async () => {
+  const server = await createHttpTestServer(async () => {
+    throw new Error("boom");
+  });
+
+  try {
+    const response = await fetch(`${server.url}/ice-servers`);
+
+    assert.equal(response.status, 500);
+    assert.deepEqual(await response.json(), {
+      error: "Failed to fetch ICE servers",
+    });
+  } finally {
+    await server.close();
+  }
+});
+
+test("GET /turn is no longer supported", async () => {
+  const server = await createHttpTestServer(async () => []);
+
+  try {
+    const response = await fetch(`${server.url}/turn`);
+
+    assert.equal(response.status, 404);
+  } finally {
+    await server.close();
+  }
 });

@@ -35,6 +35,7 @@ import type {
   JoinRejectedReason,
   PeerMeshLike,
   PeerTransportState,
+  RuntimeRtcConfiguration,
   SignalingClientLike,
   TransferStoreAdapter,
   TransportConfig,
@@ -47,7 +48,11 @@ interface TimerApi {
 
 interface SenderSessionDependencies {
   createSignalingClient?: () => SignalingClientLike;
-  createPeerMesh?: (config: TransportConfig, roomId: string) => PeerMeshLike;
+  createPeerMesh?: (
+    config: TransportConfig,
+    roomId: string,
+    rtcConfiguration: RuntimeRtcConfiguration
+  ) => PeerMeshLike;
   compressionAdapter?: CompressionAdapter;
   timerApi?: TimerApi;
 }
@@ -74,7 +79,8 @@ export class SenderSession {
 
   private readonly createPeerMesh: (
     config: TransportConfig,
-    roomId: string
+    roomId: string,
+    rtcConfiguration: RuntimeRtcConfiguration
   ) => PeerMeshLike;
 
   private readonly compressionAdapter: CompressionAdapter;
@@ -106,6 +112,8 @@ export class SenderSession {
 
   private remotePeerStatus: PeerStatus = "waiting";
 
+  private hasStartedIceChecks = false;
+
   private disposed = false;
 
   constructor(
@@ -122,7 +130,7 @@ export class SenderSession {
       dependencies.createSignalingClient ?? (() => new SignalingClient());
     this.createPeerMesh =
       dependencies.createPeerMesh ??
-      ((meshConfig, roomId) =>
+      ((meshConfig, roomId, rtcConfiguration) =>
         new PeerMesh(
           {
             role: "sender",
@@ -135,12 +143,7 @@ export class SenderSession {
           },
           {
             onIceCandidate: (candidate, connectionId, sender) => {
-              this.signalingClient?.emit("ice-candidate", {
-                room: roomId,
-                candidate,
-                sender,
-                connectionId,
-              });
+              this.handleLocalIceCandidate(candidate, connectionId, sender);
             },
             onAllConnected: () => {
               this.syncPeerStatus();
@@ -148,7 +151,8 @@ export class SenderSession {
             onTransportStateChange: (state) => {
               this.handleLocalPeerTransportState(state);
             },
-          }
+          },
+          rtcConfiguration
         ));
   }
 
@@ -170,12 +174,17 @@ export class SenderSession {
       this.signalingClient = signalingClient;
       this.localPeerStatus = "waiting";
       this.remotePeerStatus = "waiting";
+      this.hasStartedIceChecks = false;
       this.store.setPeerStatus("waiting");
+      this.store.setConnectionStage("idle");
       this.store.setConnected(false);
       this.observeSignalingClient(signalingClient);
 
       try {
-        const roomId = await signalingClient.fetchRoomId();
+        const [roomId, iceServers] = await Promise.all([
+          signalingClient.fetchRoomId(),
+          signalingClient.fetchIceServers(),
+        ]);
         if (this.disposed) {
           signalingClient.dispose();
           throw new Error("Sender session was disposed during initialization.");
@@ -183,7 +192,10 @@ export class SenderSession {
 
         this.roomId = roomId;
         try {
-          this.peerMesh = this.createPeerMesh(this.config, roomId);
+          this.peerMesh = this.createPeerMesh(this.config, roomId, {
+            iceServers,
+            sdpSemantics: "unified-plan",
+          });
         } catch (error) {
           const message =
             error instanceof Error ? error.message : "Unknown WebRTC error.";
@@ -193,6 +205,7 @@ export class SenderSession {
         }
         this.bindSignalingEvents();
         signalingClient.joinRoom({ room: roomId, role: "sender" });
+        this.store.setConnectionStage("waiting-for-peer");
         return { roomId };
       } catch (error) {
         if (this.signalingClient === signalingClient) {
@@ -272,12 +285,14 @@ export class SenderSession {
     this.compressionProbeState = createCompressionProbeState();
     this.localPeerStatus = "waiting";
     this.remotePeerStatus = "waiting";
+    this.hasStartedIceChecks = false;
     this.peerMesh?.dispose();
     this.peerMesh = null;
     this.signalingClient?.dispose();
     this.signalingClient = null;
     this.store.setConnected(false);
     this.store.setPeerStatus("waiting");
+    this.store.setConnectionStage("idle");
     this.store.resetTransfer();
   }
 
@@ -361,6 +376,8 @@ export class SenderSession {
       return;
     }
 
+    this.store.setConnectionStage("starting-webrtc");
+
     for (
       let connectionId = 0;
       connectionId < this.peerMesh.connectionCount;
@@ -376,6 +393,7 @@ export class SenderSession {
   }
 
   private handleJoinRejected(reason: JoinRejectedReason): void {
+    this.store.setConnectionStage("waiting-for-peer");
     this.markPeerDisconnected();
     this.handleTransferFailure(this.getJoinRejectedMessage(reason));
   }
@@ -383,8 +401,27 @@ export class SenderSession {
   private handlePeerLeft(role: "sender" | "receiver"): void {
     const message =
       role === "receiver" ? "Receiver left the room." : "Sender left the room.";
+    this.store.setConnectionStage("waiting-for-peer");
     this.markPeerDisconnected();
     this.handleTransferFailure(message);
+  }
+
+  private handleLocalIceCandidate(
+    candidate: RTCIceCandidateInit,
+    connectionId: number,
+    sender: "sender" | "receiver"
+  ): void {
+    if (!this.hasStartedIceChecks) {
+      this.hasStartedIceChecks = true;
+      this.store.setConnectionStage("checking-ice");
+    }
+
+    this.signalingClient?.emit("ice-candidate", {
+      room: this.roomId!,
+      candidate,
+      sender,
+      connectionId,
+    });
   }
 
   private handleLocalPeerTransportState(state: PeerStatus): void {
@@ -567,6 +604,7 @@ export class SenderSession {
     this.receiverReady = false;
     this.activeCompressionMode = "none";
     this.compressionProbeState = createCompressionProbeState();
+    this.hasStartedIceChecks = false;
     this.peerMesh?.dispose(new Error(errorMessage));
     this.peerMesh = null;
     this.store.setTransferStatus("failed");

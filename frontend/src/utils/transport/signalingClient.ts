@@ -113,6 +113,51 @@ export class SignalingClient implements SignalingClientLike {
     return response.text();
   }
 
+  async fetchIceServers(): Promise<RTCIceServer[]> {
+    const iceServersUrl = `${serverAddress}/ice-servers`;
+
+    if (import.meta.env.DEV) {
+      console.debug("[webrtc:init] requesting ICE servers", iceServersUrl);
+    }
+
+    let response: Response;
+
+    try {
+      response = await this.fetchImplementation(iceServersUrl);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Unknown network error.";
+      if (import.meta.env.DEV) {
+        console.error("[webrtc:init] ICE server request failed", {
+          iceServersUrl,
+          error,
+        });
+      }
+      throw new Error(
+        `Unable to reach the signaling server at ${iceServersUrl}: ${message}`
+      );
+    }
+
+    if (!response.ok) {
+      if (import.meta.env.DEV) {
+        console.error("[webrtc:init] ICE server request returned non-ok response", {
+          iceServersUrl,
+          status: response.status,
+          statusText: response.statusText,
+        });
+      }
+      throw new Error(
+        `Unable to request ICE servers from the signaling server at ${iceServersUrl}.`
+      );
+    }
+
+    if (import.meta.env.DEV) {
+      console.debug("[webrtc:init] ICE server request succeeded", iceServersUrl);
+    }
+
+    return (await response.json()) as RTCIceServer[];
+  }
+
   joinRoom(payload: JoinRoomPayload): void {
     this.emit("join-room", payload);
   }

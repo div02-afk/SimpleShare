@@ -1,4 +1,5 @@
 import type {
+  ConnectionStage,
   CompressionMode,
   PeerStatus,
   SignalingStatus,
@@ -119,6 +120,7 @@ export interface TransferStoreAdapter {
   setSignalingStatus: (signalingStatus: SignalingStatus) => void;
   setSignalingLatency: (signalingLatencyMs: number | null) => void;
   setPeerStatus: (peerStatus: PeerStatus) => void;
+  setConnectionStage: (connectionStage: ConnectionStage) => void;
   setMetadata: (metadata: TransferMetadata | null) => void;
   setSizeReceived: (sizeReceived: number) => void;
   setBytesWritten: (bytesWritten: number) => void;
@@ -157,6 +159,10 @@ export interface PeerMeshConfig {
   totalBufferedLowWaterMark: number;
 }
 
+export interface RuntimeRtcConfiguration extends RTCConfiguration {
+  sdpSemantics?: string;
+}
+
 export interface PeerMeshDependencies {
   onIceCandidate: (
     candidate: RTCIceCandidateInit,
@@ -174,6 +180,7 @@ export interface PeerMeshDependencies {
 
 export interface SignalingClientLike {
   fetchRoomId(): Promise<string>;
+  fetchIceServers(): Promise<RTCIceServer[]>;
   joinRoom(payload: JoinRoomPayload): void;
   emit<K extends keyof ClientToServerEvents>(
     event: K,

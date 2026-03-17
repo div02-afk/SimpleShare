@@ -9,7 +9,11 @@ import ToastNotification from "./components/toastNoti";
 import { useReceiverSession } from "./hooks/useReceiverSession";
 import { useTransferSpeed } from "./hooks/useTransferSpeed";
 import { useTransferStore } from "./store";
-import type { PeerStatus, SignalingStatus } from "./types/transfer";
+import type {
+  ConnectionStage,
+  PeerStatus,
+  SignalingStatus,
+} from "./types/transfer";
 import dataFormatHandler, {
   transferRateFormatHandler,
 } from "./utils/dataFormatHandler";
@@ -71,6 +75,25 @@ const getConnectionMessage = (
   return "Waiting for peer";
 };
 
+const getConnectionStageMessage = (
+  peerStatus: PeerStatus,
+  connectionStage: ConnectionStage
+) => {
+  if (peerStatus !== "waiting") {
+    return null;
+  }
+
+  if (connectionStage === "starting-webrtc") {
+    return "Starting WebRTC/ICE negotiation";
+  }
+
+  if (connectionStage === "checking-ice") {
+    return "Checking the peer-to-peer network path";
+  }
+
+  return null;
+};
+
 export default function Receive() {
   const sizeReceived = useTransferStore((state) => state.sizeReceived);
   const bytesWritten = useTransferStore((state) => state.bytesWritten);
@@ -80,6 +103,7 @@ export default function Receive() {
     (state) => state.signalingLatencyMs
   );
   const peerStatus = useTransferStore((state) => state.peerStatus);
+  const connectionStage = useTransferStore((state) => state.connectionStage);
   const metadata = useTransferStore((state) => state.metadata);
   const transferStatus = useTransferStore((state) => state.transferStatus);
   const writeMode = useTransferStore((state) => state.writeMode);
@@ -161,6 +185,10 @@ export default function Receive() {
     transferError
   );
   const connectionMessage = getConnectionMessage(signalingStatus, peerStatus);
+  const connectionStageMessage = getConnectionStageMessage(
+    peerStatus,
+    connectionStage
+  );
   const totalSize = metadata?.size ?? 0;
   const canPickDirectFile = session?.supportsDirectFileWrite() ?? false;
   const canStartTransfer =
@@ -221,6 +249,9 @@ export default function Receive() {
 
       <div className="mt-6 space-y-2">
         <p>{connectionMessage}</p>
+        {connectionStageMessage && (
+          <p className="text-sm text-gray-400">{connectionStageMessage}</p>
+        )}
         {signalingLatencyMs != null && (
           <p className="text-sm text-gray-400">Signaling: {signalingLatencyMs} ms</p>
         )}

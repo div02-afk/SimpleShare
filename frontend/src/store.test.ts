@@ -11,6 +11,7 @@ describe("transfer store", () => {
     useTransferStore.getState().setPeerStatus("connected");
     useTransferStore.getState().setSignalingStatus("connected");
     useTransferStore.getState().setSignalingLatency(42);
+    useTransferStore.getState().setConnectionStage("checking-ice");
     useTransferStore.getState().setTransferStatus("failed");
     useTransferStore.getState().setTransferError("boom");
 
@@ -20,8 +21,13 @@ describe("transfer store", () => {
     expect(useTransferStore.getState().peerStatus).toBe("connected");
     expect(useTransferStore.getState().signalingStatus).toBe("connected");
     expect(useTransferStore.getState().signalingLatencyMs).toBe(42);
+    expect(useTransferStore.getState().connectionStage).toBe("checking-ice");
     expect(useTransferStore.getState().transferStatus).toBe("idle");
     expect(useTransferStore.getState().error).toBeNull();
+  });
+
+  it("defaults connection stage to idle", () => {
+    expect(useTransferStore.getState().connectionStage).toBe("idle");
   });
 
   it("marks receive started based on the current write mode", () => {

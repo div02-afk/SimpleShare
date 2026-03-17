@@ -1,9 +1,9 @@
 import type { PeerStatus } from "../../types/transfer";
-import peerConnectionInfo from "../peerConnectionSetup";
 import type {
   PeerMeshConfig,
   PeerMeshDependencies,
   PeerMeshLike,
+  RuntimeRtcConfiguration,
 } from "./types";
 
 interface InFlightWaiter {
@@ -18,6 +18,8 @@ export class PeerMesh implements PeerMeshLike {
   private readonly config: PeerMeshConfig;
 
   private readonly dependencies: PeerMeshDependencies;
+
+  private readonly rtcConfiguration: RuntimeRtcConfiguration;
 
   private readonly peerConnections: RTCPeerConnection[];
 
@@ -47,16 +49,21 @@ export class PeerMesh implements PeerMeshLike {
 
   private disposed = false;
 
-  constructor(config: PeerMeshConfig, dependencies: PeerMeshDependencies) {
+  constructor(
+    config: PeerMeshConfig,
+    dependencies: PeerMeshDependencies,
+    rtcConfiguration: RuntimeRtcConfiguration
+  ) {
     this.config = config;
     this.dependencies = dependencies;
+    this.rtcConfiguration = rtcConfiguration;
     this.connectionCount = config.peerConnectionCount;
     const peerConnectionFactory =
       dependencies.peerConnectionFactory ??
       ((rtcConfig: RTCConfiguration) => new RTCPeerConnection(rtcConfig));
 
     this.peerConnections = Array.from({ length: config.peerConnectionCount }, () =>
-      peerConnectionFactory(peerConnectionInfo)
+      peerConnectionFactory(this.rtcConfiguration)
     );
     this.dataChannels = Array.from({ length: config.peerConnectionCount }, () => []);
     this.connectionIceStates = Array.from(

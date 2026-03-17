@@ -8,7 +8,11 @@ import ToastNotification from "./components/toastNoti";
 import { useSenderSession } from "./hooks/useSenderSession";
 import { useTransferSpeed } from "./hooks/useTransferSpeed";
 import { useTransferStore } from "./store";
-import type { PeerStatus, SignalingStatus } from "./types/transfer";
+import type {
+  ConnectionStage,
+  PeerStatus,
+  SignalingStatus,
+} from "./types/transfer";
 import dataFormatHandler, {
   transferRateFormatHandler,
 } from "./utils/dataFormatHandler";
@@ -70,6 +74,25 @@ const getConnectionMessage = (
   return "Waiting for peer";
 };
 
+const getConnectionStageMessage = (
+  peerStatus: PeerStatus,
+  connectionStage: ConnectionStage
+) => {
+  if (peerStatus !== "waiting") {
+    return null;
+  }
+
+  if (connectionStage === "starting-webrtc") {
+    return "Starting WebRTC/ICE negotiation";
+  }
+
+  if (connectionStage === "checking-ice") {
+    return "Checking the peer-to-peer network path";
+  }
+
+  return null;
+};
+
 export default function Send() {
   const isConnected = useTransferStore((state) => state.isConnected);
   const signalingStatus = useTransferStore((state) => state.signalingStatus);
@@ -77,6 +100,7 @@ export default function Send() {
     (state) => state.signalingLatencyMs
   );
   const peerStatus = useTransferStore((state) => state.peerStatus);
+  const connectionStage = useTransferStore((state) => state.connectionStage);
   const sizeReceived = useTransferStore((state) => state.sizeReceived);
   const transferSize = useTransferStore((state) => state.transferSize);
   const transferStatus = useTransferStore((state) => state.transferStatus);
@@ -136,6 +160,10 @@ export default function Send() {
     transferError
   );
   const connectionMessage = getConnectionMessage(signalingStatus, peerStatus);
+  const connectionStageMessage = getConnectionStageMessage(
+    peerStatus,
+    connectionStage
+  );
   const totalSize = transferSize || file?.size || 0;
   const showProgress = transferStatus !== "idle";
   const showSpeed =
@@ -161,6 +189,9 @@ export default function Send() {
 
       <div className="space-y-2 text-center">
         <p>{connectionMessage}</p>
+        {connectionStageMessage && (
+          <p className="text-sm text-gray-400">{connectionStageMessage}</p>
+        )}
         {signalingLatencyMs != null && (
           <p className="text-sm text-gray-400">Signaling: {signalingLatencyMs} ms</p>
         )}

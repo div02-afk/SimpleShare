@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SignalingClient } from "./signalingClient";
 
+const mockIceServers: RTCIceServer[] = [
+  { urls: ["stun:stun.cloudflare.com:3478"] },
+];
+
 function createMockSocket() {
   const handlers = new Map<string, (...args: unknown[]) => void>();
 
@@ -62,6 +66,54 @@ describe("SignalingClient", () => {
     } finally {
       globalThis.fetch = originalFetch;
     }
+  });
+
+  it("fetches ICE servers without creating a socket", async () => {
+    const socketFactory = vi.fn(() => {
+      return createMockSocket();
+    });
+    const fetchImplementation = vi.fn(async () => {
+      return {
+        ok: true,
+        json: async () => mockIceServers,
+      } as Response;
+    });
+
+    const client = new SignalingClient({
+      socketFactory: socketFactory as never,
+      fetchImplementation,
+    });
+
+    await expect(client.fetchIceServers()).resolves.toEqual(mockIceServers);
+    expect(socketFactory).not.toHaveBeenCalled();
+  });
+
+  it("throws a clear error when ICE server fetch returns non-ok", async () => {
+    const client = new SignalingClient({
+      fetchImplementation: vi.fn(async () => {
+        return {
+          ok: false,
+          status: 500,
+          statusText: "Server Error",
+        } as Response;
+      }),
+    });
+
+    await expect(client.fetchIceServers()).rejects.toThrow(
+      "Unable to request ICE servers from the signaling server"
+    );
+  });
+
+  it("throws a clear error when ICE server fetch fails over the network", async () => {
+    const client = new SignalingClient({
+      fetchImplementation: vi.fn(async () => {
+        throw new Error("Network down");
+      }),
+    });
+
+    await expect(client.fetchIceServers()).rejects.toThrow(
+      "Unable to reach the signaling server"
+    );
   });
 
   it("creates the socket lazily when subscribing or emitting", () => {

@@ -32,6 +32,7 @@ import type {
   JoinRejectedReason,
   PeerMeshLike,
   PeerTransportState,
+  RuntimeRtcConfiguration,
   SignalingClientLike,
   TransferFrameMessage,
   TransferStoreAdapter,
@@ -74,7 +75,11 @@ interface TimerApi {
 
 interface ReceiverSessionDependencies {
   createSignalingClient?: () => SignalingClientLike;
-  createPeerMesh?: (config: TransportConfig, roomId: string) => PeerMeshLike;
+  createPeerMesh?: (
+    config: TransportConfig,
+    roomId: string,
+    rtcConfiguration: RuntimeRtcConfiguration
+  ) => PeerMeshLike;
   createStreamWriter?: () => TransferWriter;
   createFallbackWriter?: () => TransferWriter;
   compressionAdapter?: CompressionAdapter;
@@ -123,7 +128,8 @@ export class ReceiverSession {
 
   private readonly createPeerMesh: (
     config: TransportConfig,
-    roomId: string
+    roomId: string,
+    rtcConfiguration: RuntimeRtcConfiguration
   ) => PeerMeshLike;
 
   private readonly createStreamWriter: () => TransferWriter;
@@ -146,6 +152,8 @@ export class ReceiverSession {
 
   private remotePeerStatus: PeerStatus = "waiting";
 
+  private hasStartedIceChecks = false;
+
   private peerRecoveryTimeout: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
@@ -162,7 +170,7 @@ export class ReceiverSession {
       dependencies.createSignalingClient ?? (() => new SignalingClient());
     this.createPeerMesh =
       dependencies.createPeerMesh ??
-      ((meshConfig, roomId) =>
+      ((meshConfig, roomId, rtcConfiguration) =>
         new PeerMesh(
           {
             role: "receiver",
@@ -175,12 +183,7 @@ export class ReceiverSession {
           },
           {
             onIceCandidate: (candidate, connectionId, sender) => {
-              this.signalingClient?.emit("ice-candidate", {
-                room: roomId,
-                candidate,
-                sender,
-                connectionId,
-              });
+              this.handleLocalIceCandidate(candidate, connectionId, sender);
             },
             onAllConnected: () => {
               this.syncPeerStatus();
@@ -191,7 +194,8 @@ export class ReceiverSession {
             onDataChannelMessage: (data) => {
               void this.handleChannelMessage(data);
             },
-          }
+          },
+          rtcConfiguration
         ));
     this.createStreamWriter =
       dependencies.createStreamWriter ?? (() => new StreamFileWriter());
@@ -203,14 +207,27 @@ export class ReceiverSession {
     this.roomId = roomId;
     this.localPeerStatus = "waiting";
     this.remotePeerStatus = "waiting";
+    this.hasStartedIceChecks = false;
     this.clearPeerRecoveryTimeout();
     this.store.setPeerStatus("waiting");
+    this.store.setConnectionStage("waiting-for-peer");
     this.store.setConnected(false);
     this.signalingClient = this.createSignalingClient();
     this.observeSignalingClient(this.signalingClient);
-    this.peerMesh = this.createPeerMesh(this.config, roomId);
-    this.bindSignalingEvents();
-    this.signalingClient.joinRoom({ room: roomId, role: "receiver" });
+
+    try {
+      const iceServers = await this.signalingClient.fetchIceServers();
+      this.peerMesh = this.createPeerMesh(this.config, roomId, {
+        iceServers,
+        sdpSemantics: "unified-plan",
+      });
+      this.bindSignalingEvents();
+      this.signalingClient.joinRoom({ room: roomId, role: "receiver" });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Unknown receiver initialization error.";
+      this.handleConnectionSetupFailure(message);
+    }
   }
 
   supportsDirectFileWrite(): boolean {
@@ -270,12 +287,14 @@ export class ReceiverSession {
     this.transferSession = createTransferSession();
     this.localPeerStatus = "waiting";
     this.remotePeerStatus = "waiting";
+    this.hasStartedIceChecks = false;
     this.peerMesh?.dispose();
     this.peerMesh = null;
     this.signalingClient?.dispose();
     this.signalingClient = null;
     this.store.setConnected(false);
     this.store.setPeerStatus("waiting");
+    this.store.setConnectionStage("idle");
     this.store.resetTransfer();
   }
 
@@ -329,6 +348,7 @@ export class ReceiverSession {
       return;
     }
 
+    this.store.setConnectionStage("starting-webrtc");
     const answer = await this.peerMesh.acceptOffer(connectionId, offer);
     this.signalingClient.emit("answer", {
       room: this.roomId,
@@ -348,6 +368,7 @@ export class ReceiverSession {
   }
 
   private async handleJoinRejected(reason: JoinRejectedReason): Promise<void> {
+    this.store.setConnectionStage("waiting-for-peer");
     this.markPeerDisconnected();
     await this.handleTransferFailure(this.getJoinRejectedMessage(reason), false, false);
     this.cleanupFailedConnection();
@@ -356,8 +377,27 @@ export class ReceiverSession {
   private async handlePeerLeft(role: "sender" | "receiver"): Promise<void> {
     const message =
       role === "sender" ? "Sender left the room." : "Receiver left the room.";
+    this.store.setConnectionStage("waiting-for-peer");
     this.markPeerDisconnected();
     await this.handleTransferFailure(message, false, true);
+  }
+
+  private handleLocalIceCandidate(
+    candidate: RTCIceCandidateInit,
+    connectionId: number,
+    sender: "sender" | "receiver"
+  ): void {
+    if (!this.hasStartedIceChecks) {
+      this.hasStartedIceChecks = true;
+      this.store.setConnectionStage("checking-ice");
+    }
+
+    this.signalingClient?.emit("ice-candidate", {
+      room: this.roomId!,
+      candidate,
+      sender,
+      connectionId,
+    });
   }
 
   private handleLocalPeerTransportState(state: PeerStatus): void {
@@ -610,6 +650,7 @@ export class ReceiverSession {
 
     this.clearPeerRecoveryTimeout();
     await this.abortWriter();
+    this.hasStartedIceChecks = false;
     this.peerMesh?.dispose(new Error(errorMessage));
     this.peerMesh = null;
     this.transferSession = createTransferSession(metadata);
@@ -697,6 +738,19 @@ export class ReceiverSession {
     this.peerMesh = null;
     this.signalingClient?.dispose();
     this.signalingClient = null;
+  }
+
+  private handleConnectionSetupFailure(errorMessage: string): void {
+    this.clearPeerRecoveryTimeout();
+    this.peerMesh?.dispose(new Error(errorMessage));
+    this.peerMesh = null;
+    this.signalingClient?.dispose();
+    this.signalingClient = null;
+    this.store.setConnected(false);
+    this.store.setPeerStatus("waiting");
+    this.store.setConnectionStage("idle");
+    this.store.setTransferStatus("failed");
+    this.store.setTransferError(errorMessage);
   }
 
   private getJoinRejectedMessage(reason: JoinRejectedReason): string {

@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import PeerMesh from "./peerMesh";
 
+const rtcConfiguration = {
+  iceServers: [{ urls: ["stun:stun.cloudflare.com:3478"] }],
+  sdpSemantics: "unified-plan",
+} satisfies RTCConfiguration & { sdpSemantics?: string };
+
 function createMockDataChannel() {
   return {
     readyState: "open",
@@ -52,7 +57,8 @@ describe("PeerMesh", () => {
         onIceCandidate: vi.fn(),
         onAllConnected: vi.fn(),
         peerConnectionFactory: vi.fn(() => peerConnection),
-      }
+      },
+      rtcConfiguration
     );
 
     await mesh.sendFrame(new ArrayBuffer(5));
@@ -99,7 +105,8 @@ describe("PeerMesh", () => {
           .fn()
           .mockReturnValueOnce(firstConnection)
           .mockReturnValueOnce(secondConnection),
-      }
+      },
+      rtcConfiguration
     );
 
     (firstConnection as { iceConnectionState: RTCIceConnectionState }).iceConnectionState =

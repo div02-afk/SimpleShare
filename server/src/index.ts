@@ -4,6 +4,7 @@ import { createServer, type Server as HttpServer } from "node:http";
 import { fileURLToPath } from "node:url";
 import express, { type Express } from "express";
 import { Server, type Socket } from "socket.io";
+import { getIceServers } from "./ice.js";
 
 type TransportRole = "sender" | "receiver";
 type JoinRejectedReason = "sender-not-found" | "duplicate-role" | "room-full";
@@ -374,8 +375,13 @@ export function registerSocketHandlers(
   });
 }
 
-export function createHttpApp(): Express {
+export interface HttpAppDependencies {
+  getIceServers?: () => Promise<RTCIceServer[]>;
+}
+
+export function createHttpApp(dependencies: HttpAppDependencies = {}): Express {
   const app = express();
+  const fetchIceServers = dependencies.getIceServers ?? getIceServers;
   app.use(
     cors({
       origin: "*",
@@ -385,6 +391,16 @@ export function createHttpApp(): Express {
   app.get("/random", (_req, res) => {
     const randomId = crypto.randomBytes(2).toString("hex");
     res.send(randomId);
+  });
+
+  app.get("/ice-servers", async (_req, res) => {
+    try {
+      const iceServers = await fetchIceServers();
+      res.json(iceServers);
+    } catch (error) {
+      console.error("Error fetching ICE servers:", error);
+      res.status(500).json({ error: "Failed to fetch ICE servers" });
+    }
   });
 
   return app;

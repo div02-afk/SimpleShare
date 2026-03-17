@@ -4,12 +4,23 @@ import { createDataFrame } from "./frameProtocol";
 import type { TransferStoreAdapter } from "./types";
 import ReceiverSession from "./receiverSession";
 
+const mockIceServers: RTCIceServer[] = [
+  { urls: ["stun:stun.cloudflare.com:3478"] },
+  {
+    urls: ["turn:turn.cloudflare.com:3478?transport=udp"],
+    username: "user",
+    credential: "credential",
+  },
+];
+
 class MockSignalingClient {
   handlers = new Map<string, (...args: unknown[]) => unknown>();
 
   emitted: Array<{ event: string; payload: unknown }> = [];
 
   fetchRoomId = vi.fn();
+
+  fetchIceServers = vi.fn(async () => mockIceServers);
 
   joinRoom = vi.fn();
 
@@ -98,6 +109,7 @@ function createStoreAdapter(): TransferStoreAdapter {
     setSignalingStatus: vi.fn(),
     setSignalingLatency: vi.fn(),
     setPeerStatus: vi.fn(),
+    setConnectionStage: vi.fn(),
     setMetadata: vi.fn(),
     setSizeReceived: vi.fn(),
     setBytesWritten: vi.fn(),
@@ -132,17 +144,101 @@ describe("ReceiverSession", () => {
     const store = createStoreAdapter();
     const signaling = new MockSignalingClient();
     const peerMesh = new MockPeerMesh();
+    const createPeerMesh = vi.fn(() => peerMesh as never);
+    const session = new ReceiverSession(store, {}, {
+      createSignalingClient: () => signaling as never,
+      createPeerMesh,
+    });
+
+    await session.connect("room-123");
+    await signaling.trigger("metadata", metadata);
+
+    expect(signaling.fetchIceServers).toHaveBeenCalledTimes(1);
+    expect(createPeerMesh).toHaveBeenCalledWith(
+      expect.any(Object),
+      "room-123",
+      {
+        iceServers: mockIceServers,
+        sdpSemantics: "unified-plan",
+      }
+    );
+    expect(store.setConnectionStage).toHaveBeenCalledWith("waiting-for-peer");
+    expect(store.resetTransfer).toHaveBeenCalled();
+    expect(store.setMetadata).toHaveBeenCalledWith(metadata);
+    expect(store.setTransferStatus).toHaveBeenCalledWith("awaiting-save");
+  });
+
+  it("fails connection setup when the ICE server fetch fails", async () => {
+    const store = createStoreAdapter();
+    const signaling = new MockSignalingClient();
+    const peerMesh = new MockPeerMesh();
+    signaling.fetchIceServers = vi.fn(async () => {
+      throw new Error("Unable to request ICE servers from the signaling server.");
+    });
     const session = new ReceiverSession(store, {}, {
       createSignalingClient: () => signaling as never,
       createPeerMesh: () => peerMesh as never,
     });
 
     await session.connect("room-123");
-    await signaling.trigger("metadata", metadata);
 
-    expect(store.resetTransfer).toHaveBeenCalled();
-    expect(store.setMetadata).toHaveBeenCalledWith(metadata);
-    expect(store.setTransferStatus).toHaveBeenCalledWith("awaiting-save");
+    expect(signaling.joinRoom).not.toHaveBeenCalled();
+    expect(signaling.dispose).toHaveBeenCalledTimes(1);
+    expect(store.setTransferStatus).toHaveBeenCalledWith("failed");
+    expect(store.setTransferError).toHaveBeenCalledWith(
+      "Unable to request ICE servers from the signaling server."
+    );
+  });
+
+  it("marks WebRTC startup when the first offer is handled", async () => {
+    const store = createStoreAdapter();
+    const signaling = new MockSignalingClient();
+    const peerMesh = new MockPeerMesh();
+    const session = new ReceiverSession(store, {}, {
+      createSignalingClient: () => signaling as never,
+      createPeerMesh: () => peerMesh as never,
+    });
+
+    await session.connect("room-123");
+    await signaling.trigger("offer", {
+      room: "room-123",
+      connectionId: 0,
+      offer: { type: "offer", sdp: "offer" },
+    });
+
+    expect(store.setConnectionStage).toHaveBeenCalledWith("starting-webrtc");
+  });
+
+  it("marks ICE checking when the first local candidate is emitted", async () => {
+    const store = createStoreAdapter();
+    const signaling = new MockSignalingClient();
+    const peerMesh = new MockPeerMesh();
+    const session = new ReceiverSession(store, {}, {
+      createSignalingClient: () => signaling as never,
+      createPeerMesh: () => peerMesh as never,
+    });
+
+    await session.connect("room-123");
+    (
+      session as unknown as {
+        handleLocalIceCandidate: (
+          candidate: RTCIceCandidateInit,
+          connectionId: number,
+          sender: "sender" | "receiver"
+        ) => void;
+      }
+    ).handleLocalIceCandidate({ candidate: "candidate:2" }, 1, "receiver");
+
+    expect(store.setConnectionStage).toHaveBeenCalledWith("checking-ice");
+    expect(signaling.emitted).toContainEqual({
+      event: "ice-candidate",
+      payload: {
+        room: "room-123",
+        candidate: { candidate: "candidate:2" },
+        sender: "receiver",
+        connectionId: 1,
+      },
+    });
   });
 
   it("starts fallback downloads and notifies the sender", async () => {

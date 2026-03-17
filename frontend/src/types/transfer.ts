@@ -10,6 +10,11 @@ export type TransferStatus =
 
 export type WriteMode = "stream" | "blob-fallback";
 export type TransportRole = "sender" | "receiver";
+export type ConnectionStage =
+  | "idle"
+  | "waiting-for-peer"
+  | "starting-webrtc"
+  | "checking-ice";
 export type SignalingStatus =
   | "connecting"
   | "connected"
@@ -34,6 +39,7 @@ export interface TransferState {
   signalingStatus: SignalingStatus;
   signalingLatencyMs: number | null;
   peerStatus: PeerStatus;
+  connectionStage: ConnectionStage;
   sizeReceived: number;
   bytesWritten: number;
   transferSize: number;
@@ -51,6 +57,7 @@ export interface TransferActions {
   setSignalingStatus: (signalingStatus: SignalingStatus) => void;
   setSignalingLatency: (signalingLatencyMs: number | null) => void;
   setPeerStatus: (peerStatus: PeerStatus) => void;
+  setConnectionStage: (connectionStage: ConnectionStage) => void;
   setMetadata: (metadata: TransferMetadata | null) => void;
   setSizeReceived: (sizeReceived: number) => void;
   setBytesWritten: (bytesWritten: number) => void;
