@@ -5,7 +5,7 @@ import GitHubLink from "./components/githublink";
 const sections = [
   {
     title: "1. Signaling",
-    text: "The backend server creates a short room code and uses Socket.IO to relay offers, answers, ICE candidates, metadata, and progress events between two browsers.",
+    text: "The backend server creates a short room code, uses Socket.IO to relay offers, answers, ICE candidates, metadata, and progress events between two browsers, and provides Cloudflare-backed STUN and TURN servers for WebRTC connectivity.",
   },
   {
     title: "2. Sender setup",
@@ -40,9 +40,11 @@ export default function ProjectOverview() {
             </Link>
             <h1 className="mt-4 text-4xl">How the project works</h1>
             <p className="mt-4 max-w-3xl text-base text-gray-300">
-              SimpleShare uses Socket.IO for signaling and WebRTC for the actual
-              file transfer. The server coordinates the connection, but the file
-              itself moves directly between peers.
+              SimpleShare uses Socket.IO for signaling, WebRTC for the actual
+              file transfer, and Cloudflare-provided STUN and TURN servers to
+              help peers establish the best available connection. The server
+              coordinates the connection, but the file itself moves directly
+              between peers whenever possible.
             </p>
           </div>
 
