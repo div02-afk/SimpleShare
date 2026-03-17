@@ -1,7 +1,8 @@
 import { LinearProgress } from "@mui/material";
-import { motion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import { useState } from "react";
 import Dropzone from "react-dropzone";
+import { Link } from "react-router-dom";
 import GitHubLink from "./components/githublink";
 import Loader from "./components/loader";
 import ToastNotification from "./components/toastNoti";
@@ -171,9 +172,15 @@ export default function Send() {
     transferStatus === "fallback-buffering";
 
   return (
-    <div className="bg-black pt-2 font-mono text-white min-h-screen">
-      <div className="mb-10">
-        <h1 className="my-10 text-center text-3xl">Send Anything</h1>
+    <div className="bg-black pt-2 font-mono text-white min-h-screen relative overflow-hidden flex flex-col items-center">
+      <div className="absolute left-6 top-6 text-left">
+        <Link to="/" className="text-xl font-semibold transition hover:text-gray-300">
+          SimpleShare
+        </Link>
+      </div>
+
+      <div className="mb-4 mt-16 text-center w-full">
+        <h1 className="mb-2 text-3xl">Send Anything</h1>
         <p className="text-center">
           Share this to the receiver <br />
           <span
@@ -187,14 +194,32 @@ export default function Send() {
         </p>
       </div>
 
-      <div className="space-y-2 text-center">
-        <p>{connectionMessage}</p>
-        {connectionStageMessage && (
-          <p className="text-sm text-gray-400">{connectionStageMessage}</p>
-        )}
-        {signalingLatencyMs != null && (
-          <p className="text-sm text-gray-400">Signaling: {signalingLatencyMs} ms</p>
-        )}
+      <div className="mb-6 flex h-16 flex-col items-center justify-center space-y-1 text-center">
+        <p className="text-gray-300">{connectionMessage}</p>
+        <AnimatePresence mode="popLayout">
+          {connectionStageMessage && (
+            <motion.p
+              key="stage"
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="text-sm text-gray-500"
+            >
+              {connectionStageMessage}
+            </motion.p>
+          )}
+          {signalingLatencyMs != null && (
+            <motion.p
+              key="latency"
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="text-sm text-gray-500"
+            >
+              Signaling: {signalingLatencyMs} ms
+            </motion.p>
+          )}
+        </AnimatePresence>
       </div>
 
       <Dropzone
@@ -202,19 +227,24 @@ export default function Send() {
           setFile(acceptedFiles[0] ?? null);
         }}
       >
-        {({ getRootProps, getInputProps }) => (
-          <div className="flex w-full items-center justify-center">
+        {({ getRootProps, getInputProps, isDragActive }) => (
+          <div className="flex w-full items-center justify-center border-0 px-6">
             <div
               {...getRootProps()}
-              className="h-44 w-[70%] max-w-150 rounded-2xl bg-gray-500"
+              className={`flex h-44 w-[70%] max-w-150 cursor-pointer flex-col items-center justify-center rounded-2xl border-2 transition-all duration-300 ${
+                isDragActive
+                  ? "scale-[1.02] border-solid border-blue-500 bg-gray-900"
+                  : "border-dashed border-gray-700 bg-black hover:border-gray-500 hover:bg-gray-900"
+              }`}
             >
               <input {...getInputProps()} />
-              <div className="mt-10" />
               {file ? (
-                <p className="text-center text-xl">{shortener(file.name)}</p>
+                <p className="text-center text-xl text-gray-200">{shortener(file.name)}</p>
               ) : (
-                <p className="text-center text-xl">
-                  Drag and drop some files here, or click to select files
+                <p className="px-4 text-center text-xl text-gray-400">
+                  {isDragActive
+                    ? "Drop the file here"
+                    : "Drag and drop some files here, or click to select files"}
                 </p>
               )}
             </div>
@@ -225,39 +255,58 @@ export default function Send() {
       <div className="flex w-screen items-center justify-center pt-10">
         <motion.button
           disabled={!isConnected || !file}
-          {...(isConnected && file ? { whileHover: { scale: 1.5 } } : {})}
-          className="rounded-2xl bg-blue-500 p-2 px-10 disabled:bg-blue-300"
+          {...(isConnected && file ? { whileHover: { scale: 1.2 } } : {})}
+          className="rounded-2xl bg-blue-500 p-2 px-10 transition-colors disabled:bg-blue-800 disabled:text-gray-400"
           onClick={handleSend}
         >
           Send file
         </motion.button>
       </div>
 
-      {showProgress && (
-        <div className="m-auto mt-10 w-3/5">
-          <LinearProgress
-            variant="determinate"
-            value={totalSize ? Math.min((100 * sizeReceived) / totalSize, 100) : 0}
-          />
-          <p className="mt-4 text-center">
-            {dataFormatHandler(sizeReceived)} / {dataFormatHandler(totalSize)}
-          </p>
-          {showSpeed && (
-            <p className="mt-2 text-center text-gray-300">
-              Speed: {transferRateFormatHandler(transferSpeed)}
+      <AnimatePresence>
+        {showProgress && (
+          <motion.div
+            initial={{ opacity: 0, height: 0, marginTop: 0 }}
+            animate={{ opacity: 1, height: "auto", marginTop: 40 }}
+            exit={{ opacity: 0, height: 0, marginTop: 0 }}
+            className="m-auto w-3/5 overflow-hidden"
+          >
+            <LinearProgress
+              variant="determinate"
+              value={totalSize ? Math.min((100 * sizeReceived) / totalSize, 100) : 0}
+            />
+            <p className="mt-4 text-center text-gray-300">
+              {dataFormatHandler(sizeReceived)} <span className="text-gray-600">/</span> {dataFormatHandler(totalSize)}
             </p>
-          )}
-          {transferMessage && (
-            <p
-              className={`mt-3 text-center ${
-                transferStatus === "failed" ? "text-red-400" : "text-gray-300"
-              }`}
-            >
-              {transferMessage}
-            </p>
-          )}
-        </div>
-      )}
+            <AnimatePresence>
+              {showSpeed && (
+                <motion.p
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="mt-2 text-center text-gray-400 overflow-hidden"
+                >
+                  Speed: {transferRateFormatHandler(transferSpeed)}
+                </motion.p>
+              )}
+            </AnimatePresence>
+            <AnimatePresence>
+              {transferMessage && (
+                <motion.p
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className={`mt-3 overflow-hidden text-center ${
+                    transferStatus === "failed" ? "text-red-400" : "text-gray-400"
+                  }`}
+                >
+                  {transferMessage}
+                </motion.p>
+              )}
+            </AnimatePresence>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <GitHubLink />
       <ToastNotification

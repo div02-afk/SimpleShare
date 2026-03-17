@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import GitHubLink from "./components/githublink";
 import serverAddress from "./utils/serverLink";
 
-const divStyle = "flex w-[150px] items-center justify-center rounded-3xl";
+const divStyle = "flex w-[150px] h-[110px] items-center justify-center rounded-3xl";
 const MotionLink = motion(Link);
 
 export default function Home() {
@@ -12,13 +12,13 @@ export default function Home() {
   const receiveControls = useAnimation();
 
   useEffect(() => {
-    void fetch(serverAddress).catch(() => {});
+    void fetch(serverAddress).catch(() => { });
   }, []);
 
   return (
     <div className="relative flex h-screen w-screen select-none items-center justify-center overflow-hidden bg-black font-mono text-2xl font-medium text-white">
       <div className="pointer-events-none absolute left-6 top-6 text-left">
-        <h1 className="text-3xl font-semibold">SimpleShare</h1>
+        <h1 className="text-xl font-semibold">SimpleShare</h1>
       </div>
 
       <div className="absolute right-6 top-6">
@@ -47,14 +47,14 @@ export default function Home() {
               initial: {
                 scale: 1,
                 width: "150px",
-                height: "auto",
+                height: "110px",
                 transform: "translateX(0px)",
                 fontSize: "20px",
               },
               hover: {
                 width: "30vw",
                 height: "30vh",
-                transform: "translateX(-200px)",
+                transform: "translateX(-40%)",
                 fontSize: "40px",
                 transition: { duration: 0.6, type: "spring" },
               },
@@ -82,14 +82,14 @@ export default function Home() {
               initial: {
                 scale: 1,
                 width: "150px",
-                height: "auto",
+                height: "110px",
                 transform: "translateX(0px)",
                 fontSize: "20px",
               },
               hover: {
                 width: "30vw",
                 height: "30vh",
-                transform: "translateX(200px)",
+                transform: "translateX(40%)",
                 fontSize: "40px",
                 transition: { duration: 0.6, type: "spring" },
               },

@@ -101,6 +101,8 @@ export class SenderSession {
 
   private roomId: string | null = null;
 
+  private iceServers: RTCIceServer[] | null = null;
+
   private initPromise: Promise<{ roomId: string }> | null = null;
 
   private activeCompressionMode: CompressionMode = "none";
@@ -191,6 +193,7 @@ export class SenderSession {
         }
 
         this.roomId = roomId;
+        this.iceServers = iceServers;
         try {
           this.peerMesh = this.createPeerMesh(this.config, roomId, {
             iceServers,
@@ -213,6 +216,7 @@ export class SenderSession {
           this.signalingClient = null;
         }
         this.roomId = null;
+        this.iceServers = null;
         this.peerMesh = null;
         throw error;
       } finally {
@@ -290,6 +294,8 @@ export class SenderSession {
     this.peerMesh = null;
     this.signalingClient?.dispose();
     this.signalingClient = null;
+    this.roomId = null;
+    this.iceServers = null;
     this.store.setConnected(false);
     this.store.setPeerStatus("waiting");
     this.store.setConnectionStage("idle");
@@ -372,8 +378,30 @@ export class SenderSession {
   }
 
   private async handleRoomReady(): Promise<void> {
-    if (!this.peerMesh || !this.signalingClient || !this.roomId) {
+    if (!this.signalingClient || !this.roomId || !this.iceServers) {
       return;
+    }
+
+    if (!this.peerMesh) {
+      try {
+        this.localPeerStatus = "waiting";
+        this.remotePeerStatus = "waiting";
+        this.peerMesh = this.createPeerMesh(this.config, this.roomId, {
+          iceServers: this.iceServers,
+          sdpSemantics: "unified-plan",
+        });
+        
+        // When we recreate peerMesh, we must also resync the status as it defaults to waiting
+        this.syncPeerStatus();
+        this.store.resetTransfer();
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Unknown WebRTC error.";
+        this.handleTransferFailure(
+          `Unable to initialize the sender WebRTC transport: ${message}`
+        );
+        return;
+      }
     }
 
     this.store.setConnectionStage("starting-webrtc");

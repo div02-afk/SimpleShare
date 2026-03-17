@@ -2,7 +2,9 @@ import { faCircleCheck, faCirclePlus } from "@fortawesome/free-solid-svg-icons";
 import type { IconProp } from "@fortawesome/fontawesome-svg-core";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { LinearProgress } from "@mui/material";
+import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import GitHubLink from "./components/githublink";
 import Loader from "./components/loader";
 import ToastNotification from "./components/toastNoti";
@@ -113,6 +115,7 @@ export default function Receive() {
   );
   const { session, connect } = useReceiverSession();
   const [uniqueId, setUniqueId] = useState("");
+  const [inputError, setInputError] = useState("");
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [isTransferCompleteVisible, setIsTransferCompleteVisible] =
     useState(false);
@@ -171,10 +174,16 @@ export default function Receive() {
   }, [transferStatus]);
 
   const handleConnect = async () => {
-    if (uniqueId.length < 4) {
+    if (uniqueId.length !== 4) {
+      setInputError("Code must be exactly 4 characters");
+      return;
+    }
+    if (!/^[a-z0-9]{4}$/.test(uniqueId)) {
+      setInputError("Code can only contain letters and numbers");
       return;
     }
 
+    setInputError("");
     setIsLoading(true);
     await connect(uniqueId);
   };
@@ -212,25 +221,36 @@ export default function Receive() {
     transferStatus === "fallback-buffering";
 
   return (
-    <div className="min-h-screen w-screen bg-black pb-10 text-center text-white">
-      <div className="mb-20 bg-transparent text-3xl">
-        <h1 className="pt-10">Receive Anything</h1>
+    <div className="min-h-screen w-screen bg-black pb-10 font-mono text-center text-white relative flex flex-col items-center overflow-x-hidden">
+      <div className="absolute left-6 top-6 text-left w-full">
+        <Link to="/" className="text-xl font-semibold transition hover:text-gray-300">
+          SimpleShare
+        </Link>
+      </div>
+
+      <div className="mb-12 mt-16 bg-transparent text-3xl w-full">
+        <h1 className="pt-2">Receive Anything</h1>
       </div>
 
       <form
-        className="m-auto flex w-80 justify-between rounded-2xl border-2 p-2"
+        className="m-auto flex w-80 justify-between rounded-2xl border-2 border-gray-700 bg-gray-900 p-2 transition-all focus-within:border-blue-500 focus-within:bg-gray-800"
         onSubmit={(event) => {
           event.preventDefault();
           void handleConnect();
         }}
       >
         <input
-          className="bg-transparent outline-none"
+          className="bg-transparent px-2 text-white outline-none placeholder:text-gray-500"
           value={uniqueId}
           onChange={(event) => {
-            setUniqueId(event.target.value);
+            const val = event.target.value.toLowerCase();
+            if (val.length <= 4) {
+              setUniqueId(val);
+              if (inputError) setInputError("");
+            }
           }}
           type="text"
+          maxLength={4}
           placeholder="Share Code"
         />
         <button type="submit">
@@ -247,93 +267,168 @@ export default function Receive() {
         </button>
       </form>
 
-      <div className="mt-6 space-y-2">
-        <p>{connectionMessage}</p>
-        {connectionStageMessage && (
-          <p className="text-sm text-gray-400">{connectionStageMessage}</p>
-        )}
-        {signalingLatencyMs != null && (
-          <p className="text-sm text-gray-400">Signaling: {signalingLatencyMs} ms</p>
-        )}
+      <div className="h-6 mt-2 text-red-500 text-sm">
+        <AnimatePresence>
+          {inputError && (
+            <motion.p
+              initial={{ opacity: 0, y: -5 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -5 }}
+            >
+              {inputError}
+            </motion.p>
+          )}
+        </AnimatePresence>
       </div>
 
-      {isConnected && transferStatus === "idle" && (
-        <div className="mt-10">
-          <p className="text-2xl">Waiting for sender</p>
-        </div>
-      )}
-
-      {metadata && (
-        <div className="mt-10 flex flex-col items-center gap-4">
-          <p className="text-2xl">File: {metadata.name}</p>
-          <p className="text-xl">File Size: {dataFormatHandler(totalSize)}</p>
-          {resolvedFileName && (
-            <p className="text-sm text-gray-400">Saving as: {resolvedFileName}</p>
-          )}
-          {writeMode && (
-            <p className="text-sm uppercase tracking-[0.3em] text-gray-400">
-              {writeMode === "stream" ? "Direct To File" : "Browser Fallback"}
-            </p>
-          )}
-          {transferMessage && (
-            <p
-              className={`max-w-xl px-6 ${
-                transferStatus === "failed" ? "text-red-400" : "text-gray-300"
-              }`}
+      <div className="mb-6 mt-2 flex h-16 flex-col items-center justify-center space-y-1 text-center">
+        <p className="text-gray-300">{connectionMessage}</p>
+        <AnimatePresence mode="popLayout">
+          {connectionStageMessage && (
+            <motion.p
+              key="stage"
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="text-sm text-gray-500"
             >
-              {transferMessage}
-            </p>
+              {connectionStageMessage}
+            </motion.p>
           )}
-          {canStartTransfer && (
-            <button
-              onClick={() => {
-                void session?.prepareDownload();
-              }}
-              className="rounded-2xl bg-blue-500 px-8 py-3"
+          {signalingLatencyMs != null && (
+            <motion.p
+              key="latency"
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="text-sm text-gray-500"
             >
-              {canPickDirectFile ? "Save as..." : "Start download"}
-            </button>
+              Signaling: {signalingLatencyMs} ms
+            </motion.p>
           )}
-        </div>
-      )}
+        </AnimatePresence>
+      </div>
 
-      {showProgress && (
-        <div className="mt-10">
-          <p className="text-2xl">
-            Received:{" "}
-            <span className="inline-block px-2">
-              {dataFormatHandler(sizeReceived)}
-            </span>
-          </p>
-          {showWrittenBytes && (
-            <p className="mt-2 text-gray-300">
-              Written: {dataFormatHandler(bytesWritten)} /{" "}
-              {dataFormatHandler(totalSize)}
+      <AnimatePresence>
+        {isConnected && transferStatus === "idle" && (
+          <motion.div
+            initial={{ opacity: 0, height: 0, marginTop: 0 }}
+            animate={{ opacity: 1, height: "auto", marginTop: 40 }}
+            exit={{ opacity: 0, height: 0, marginTop: 0 }}
+            className="overflow-hidden"
+          >
+            <p className="text-2xl text-gray-300">Waiting for sender</p>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {metadata && (
+          <motion.div
+            initial={{ opacity: 0, height: 0, marginTop: 0 }}
+            animate={{ opacity: 1, height: "auto", marginTop: 40 }}
+            exit={{ opacity: 0, height: 0, marginTop: 0 }}
+            className="flex flex-col items-center gap-4 overflow-hidden"
+          >
+            <p className="text-2xl text-gray-200">File: {metadata.name}</p>
+            <p className="text-xl text-gray-300">File Size: {dataFormatHandler(totalSize)}</p>
+            {resolvedFileName && (
+              <p className="text-sm text-gray-500">Saving as: {resolvedFileName}</p>
+            )}
+            {writeMode && (
+              <p className="text-sm uppercase tracking-[0.3em] text-gray-500">
+                {writeMode === "stream" ? "Direct To File" : "Browser Fallback"}
+              </p>
+            )}
+            <AnimatePresence>
+              {transferMessage && (
+                <motion.p
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className={`max-w-xl overflow-hidden px-6 text-center ${transferStatus === "failed" ? "text-red-400" : "text-gray-400"
+                    }`}
+                >
+                  {transferMessage}
+                </motion.p>
+              )}
+            </AnimatePresence>
+            {canStartTransfer && (
+              <motion.button
+                initial={{ opacity: 1, scale: 1 }}
+                whileHover={{ scale: 1.2 }}
+                whileTap={{ scale: 0.9 }}
+                onClick={() => {
+                  void session?.prepareDownload();
+                }}
+                className="mt-2 rounded-2xl bg-blue-500 p-2 px-10 transition-colors"
+              >
+                {canPickDirectFile ? "Save as..." : "Start download"}
+              </motion.button>
+            )}
+            <div></div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showProgress && (
+          <motion.div
+            initial={{ opacity: 0, height: 0, marginTop: 0 }}
+            animate={{ opacity: 1, height: "auto", marginTop: 40 }}
+            exit={{ opacity: 0, height: 0, marginTop: 0 }}
+            className="overflow-hidden"
+          >
+            <p className="text-2xl text-gray-200">
+              Received:{" "}
+              <span className="inline-block px-2 text-white">
+                {dataFormatHandler(sizeReceived)}
+              </span>
             </p>
-          )}
-          {showSpeed && (
-            <p className="mt-2 text-gray-300">
-              Speed: {transferRateFormatHandler(transferSpeed)}
-            </p>
-          )}
-          <div className="px-8 pt-6 md:px-32">
-            <LinearProgress
-              variant="determinate"
-              value={totalSize ? Math.min((100 * progressBytes) / totalSize, 100) : 0}
-            />
-          </div>
-        </div>
-      )}
+            <AnimatePresence>
+              {showWrittenBytes && (
+                <motion.p
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="mt-2 overflow-hidden text-gray-300"
+                >
+                  Written: {dataFormatHandler(bytesWritten)} <span className="text-gray-600">/</span>{" "}
+                  {dataFormatHandler(totalSize)}
+                </motion.p>
+              )}
+            </AnimatePresence>
+            <AnimatePresence>
+              {showSpeed && (
+                <motion.p
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="mt-2 text-gray-400 overflow-hidden"
+                >
+                  Speed: {transferRateFormatHandler(transferSpeed)}
+                </motion.p>
+              )}
+            </AnimatePresence>
+            <div className="px-8 pt-6 md:px-32">
+              <LinearProgress
+                variant="determinate"
+                value={totalSize ? Math.min((100 * progressBytes) / totalSize, 100) : 0}
+              />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {transferStatus === "failed" && transferError && (
         <div className="mt-8 text-red-400">{transferError}</div>
       )}
 
       <GitHubLink />
-      <ToastNotification
+      {/* <ToastNotification
         isModalVisible={isModalVisible}
         text="Connection Successful"
-      />
+      /> */}
       <ToastNotification
         isModalVisible={isTransferCompleteVisible}
         text="Transfer Complete"

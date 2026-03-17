@@ -35,7 +35,7 @@ export default function ProjectOverview() {
       <div className="mx-auto max-w-4xl">
         <div className="mb-10 flex flex-wrap items-start justify-between gap-4">
           <div>
-            <Link to="/" className="text-3xl font-semibold">
+            <Link to="/" className="text-xl font-semibold">
               SimpleShare
             </Link>
             <h1 className="mt-4 text-4xl">How the project works</h1>
@@ -51,13 +51,13 @@ export default function ProjectOverview() {
           <div className="flex gap-3 text-sm">
             <Link
               to="/send"
-              className="rounded-md border border-white px-4 py-2 transition hover:bg-white hover:text-black"
+              className="rounded-md border border-white bg-black px-4 py-2 transition hover:bg-white hover:text-black"
             >
               Send
             </Link>
             <Link
               to="/receive"
-              className="rounded-md border border-white px-4 py-2 transition hover:bg-white hover:text-black"
+              className="rounded-md border border-white bg-black px-4 py-2 transition hover:bg-white hover:text-black"
             >
               Receive
             </Link>
@@ -73,22 +73,14 @@ export default function ProjectOverview() {
               transition={{ duration: 0.35, delay: index * 0.05 }}
               className="border-b border-white/20 pb-5"
             >
-              <h2 className="text-2xl">{section.title}</h2>
-              <p className="mt-3 text-base leading-7 text-gray-300">
+              <h2 className="text-2xl text-gray-200">{section.title}</h2>
+              <p className="mt-3 text-base leading-7 text-gray-400">
                 {section.text}
               </p>
             </motion.div>
           ))}
         </div>
 
-        <div className="mt-8">
-          <Link
-            to="/"
-            className="rounded-md border border-white px-4 py-2 text-sm transition hover:bg-white hover:text-black"
-          >
-            Back to home
-          </Link>
-        </div>
       </div>
 
       <GitHubLink />
