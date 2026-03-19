@@ -1,5 +1,7 @@
 {
-    "rewrites":  [
-      {"source": "/(.*)", "destination": "/"}
-    ]
-  }
+  "installCommand": "cd ../.. && pnpm install",
+  "buildCommand": "cd ../.. && pnpm build --filter=p2p-fileshare-frontend...",
+  "rewrites": [
+    {"source": "/(.*)", "destination": "/"}
+  ]
+}
