@@ -117,8 +117,7 @@ export default function Receive() {
   const { session, connect } = useReceiverSession();
   const [uniqueId, setUniqueId] = useState("");
   const [inputError, setInputError] = useState("");
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [isModalVisible, setIsModalVisible] = useState(false);
+
   const [isTransferCompleteVisible, setIsTransferCompleteVisible] =
     useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -131,32 +130,21 @@ export default function Receive() {
 
     const showTimeout = window.setTimeout(() => {
       setIsLoading(false);
-      setIsModalVisible(true);
     }, 0);
-    const hideTimeout = window.setTimeout(() => {
-      setIsModalVisible(false);
-    }, 1500);
 
     return () => {
       window.clearTimeout(showTimeout);
-      window.clearTimeout(hideTimeout);
     };
   }, [isConnected]);
 
-  useEffect(() => {
-    if (!isLoading) {
-      return;
-    }
-
-    if (
-      transferError ||
+  if (
+    isLoading &&
+    (transferError ||
       peerStatus !== "waiting" ||
-      signalingStatus === "disconnected"
-    ) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setIsLoading(false);
-    }
-  }, [isLoading, peerStatus, signalingStatus, transferError]);
+      signalingStatus === "disconnected")
+  ) {
+    setIsLoading(false);
+  }
 
   useEffect(() => {
     if (transferStatus !== "completed") {
@@ -428,10 +416,7 @@ export default function Receive() {
       </AnimatePresence>
 
       <GitHubLink />
-      {/* <ToastNotification
-        isModalVisible={isModalVisible}
-        text="Connection Successful"
-      /> */}
+
       <ToastNotification
         isModalVisible={isTransferCompleteVisible}
         text="Transfer Complete"
