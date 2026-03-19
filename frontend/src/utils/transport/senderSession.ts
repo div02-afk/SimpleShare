@@ -3,6 +3,7 @@ import type {
   PeerStatus,
   TransferMetadata,
 } from "../../types/transfer";
+import posthog from "posthog-js";
 import {
   createCompressionProbeState,
   DEFAULT_COMPRESSION_MODE,
@@ -625,6 +626,11 @@ export class SenderSession {
   }
 
   private handleTransferFailure(errorMessage: string): void {
+    posthog.capture("transfer_failure", {
+      room_id: this.roomId,
+      role: "sender",
+      error_message: errorMessage,
+    });
     this.clearReceiverReadyTimeout();
     this.clearPeerRecoveryTimeout();
     this.pendingFile = null;

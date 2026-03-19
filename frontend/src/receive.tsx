@@ -5,6 +5,7 @@ import { LinearProgress } from "@mui/material";
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import posthog from "posthog-js";
 import GitHubLink from "./components/githublink";
 import Loader from "./components/loader";
 import ToastNotification from "./components/toastNoti";
@@ -116,6 +117,7 @@ export default function Receive() {
   const { session, connect } = useReceiverSession();
   const [uniqueId, setUniqueId] = useState("");
   const [inputError, setInputError] = useState("");
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [isTransferCompleteVisible, setIsTransferCompleteVisible] =
     useState(false);
@@ -151,6 +153,7 @@ export default function Receive() {
       peerStatus !== "waiting" ||
       signalingStatus === "disconnected"
     ) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setIsLoading(false);
     }
   }, [isLoading, peerStatus, signalingStatus, transferError]);
@@ -185,6 +188,10 @@ export default function Receive() {
 
     setInputError("");
     setIsLoading(true);
+
+    posthog.capture("receive_attempted", {
+      room_id: uniqueId,
+    });
     await connect(uniqueId);
   };
 

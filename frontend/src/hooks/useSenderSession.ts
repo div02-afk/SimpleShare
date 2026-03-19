@@ -12,6 +12,7 @@ export function useSenderSession() {
 
   useEffect(() => {
     const nextSession = new SenderSession(createTransferStoreAdapter());
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setSession(nextSession);
 
     let cancelled = false;

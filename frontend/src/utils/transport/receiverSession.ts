@@ -3,6 +3,7 @@ import type {
   PeerStatus,
   WriteMode,
 } from "../../types/transfer";
+import posthog from "posthog-js";
 import {
   DEFAULT_COMPRESSION_MODE,
   FflateCompressionAdapter,
@@ -632,6 +633,12 @@ export class ReceiverSession {
     this.store.setTransferStatus("completed");
     this.store.setTransferError(null);
 
+    posthog.capture("transfer_success", {
+      room_id: this.roomId,
+      role: "receiver",
+      data_transferred_bytes: metadata.size,
+    });
+
     if (this.signalingClient && this.roomId) {
       this.signalingClient.emit("transfer-complete", { room: this.roomId });
     }
@@ -642,6 +649,11 @@ export class ReceiverSession {
     notifySender: boolean,
     preserveMetadata: boolean
   ): Promise<void> {
+    posthog.capture("transfer_failure", {
+      room_id: this.roomId,
+      role: "receiver",
+      error_message: errorMessage,
+    });
     const metadata = preserveMetadata ? this.transferSession.metadata : null;
     const resolvedFileName = preserveMetadata
       ? this.transferSession.resolvedFileName
