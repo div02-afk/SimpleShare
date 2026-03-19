@@ -5,6 +5,7 @@ import { LinearProgress } from "@mui/material";
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import posthog from "posthog-js";
 import GitHubLink from "./components/githublink";
 import Loader from "./components/loader";
 import ToastNotification from "./components/toastNoti";
@@ -116,7 +117,7 @@ export default function Receive() {
   const { session, connect } = useReceiverSession();
   const [uniqueId, setUniqueId] = useState("");
   const [inputError, setInputError] = useState("");
-  const [isModalVisible, setIsModalVisible] = useState(false);
+
   const [isTransferCompleteVisible, setIsTransferCompleteVisible] =
     useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -129,31 +130,21 @@ export default function Receive() {
 
     const showTimeout = window.setTimeout(() => {
       setIsLoading(false);
-      setIsModalVisible(true);
     }, 0);
-    const hideTimeout = window.setTimeout(() => {
-      setIsModalVisible(false);
-    }, 1500);
 
     return () => {
       window.clearTimeout(showTimeout);
-      window.clearTimeout(hideTimeout);
     };
   }, [isConnected]);
 
-  useEffect(() => {
-    if (!isLoading) {
-      return;
-    }
-
-    if (
-      transferError ||
+  if (
+    isLoading &&
+    (transferError ||
       peerStatus !== "waiting" ||
-      signalingStatus === "disconnected"
-    ) {
-      setIsLoading(false);
-    }
-  }, [isLoading, peerStatus, signalingStatus, transferError]);
+      signalingStatus === "disconnected")
+  ) {
+    setIsLoading(false);
+  }
 
   useEffect(() => {
     if (transferStatus !== "completed") {
@@ -185,6 +176,10 @@ export default function Receive() {
 
     setInputError("");
     setIsLoading(true);
+
+    posthog.capture("receive_attempted", {
+      room_id: uniqueId,
+    });
     await connect(uniqueId);
   };
 
@@ -421,10 +416,7 @@ export default function Receive() {
       </AnimatePresence>
 
       <GitHubLink />
-      {/* <ToastNotification
-        isModalVisible={isModalVisible}
-        text="Connection Successful"
-      /> */}
+
       <ToastNotification
         isModalVisible={isTransferCompleteVisible}
         text="Transfer Complete"

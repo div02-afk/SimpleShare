@@ -127,6 +127,12 @@ interface ParticipantRecord {
   role: TransportRole;
 }
 
+interface RoomRegistryMetrics {
+  roomCount: number;
+  participantCount: number;
+  readyRoomCount: number;
+}
+
 type JoinResult =
   | { accepted: true; roomReady: boolean }
   | { accepted: false; reason: JoinRejectedReason };
@@ -135,6 +141,7 @@ interface RoomRegistry {
   getRoom: (roomId: string) => RoomState | null;
   join: (roomId: string, role: TransportRole, socketId: string) => JoinResult;
   removeSocket: (socketId: string) => ParticipantRecord | null;
+  getMetrics: () => RoomRegistryMetrics;
 }
 
 interface RoomEmitter {
@@ -262,10 +269,27 @@ export function createRoomRegistry(): RoomRegistry {
     return participant;
   };
 
+  const getMetrics = (): RoomRegistryMetrics => {
+    let readyRoomCount = 0;
+
+    for (const room of rooms.values()) {
+      if (room.participants.sender && room.participants.receiver) {
+        readyRoomCount += 1;
+      }
+    }
+
+    return {
+      roomCount: rooms.size,
+      participantCount: socketToParticipant.size,
+      readyRoomCount,
+    };
+  };
+
   return {
     getRoom,
     join,
     removeSocket,
+    getMetrics,
   };
 }
 
@@ -377,11 +401,20 @@ export function registerSocketHandlers(
 
 export interface HttpAppDependencies {
   getIceServers?: () => Promise<RTCIceServer[]>;
+  getHealthSnapshot?: () => RoomRegistryMetrics & { websocketConnections: number };
 }
 
 export function createHttpApp(dependencies: HttpAppDependencies = {}): Express {
   const app = express();
   const fetchIceServers = dependencies.getIceServers ?? getIceServers;
+  const getHealthSnapshot =
+    dependencies.getHealthSnapshot ??
+    (() => ({
+      websocketConnections: 0,
+      roomCount: 0,
+      participantCount: 0,
+      readyRoomCount: 0,
+    }));
   app.use(
     cors({
       origin: "*",
@@ -403,6 +436,22 @@ export function createHttpApp(dependencies: HttpAppDependencies = {}): Express {
     }
   });
 
+  app.get("/healthz", (_req, res) => {
+    const snapshot = getHealthSnapshot();
+
+    res.status(200).json({
+      status: "ok",
+      timestamp: new Date().toISOString(),
+      uptimeSeconds: Math.round(process.uptime()),
+      metrics: {
+        websocketConnections: snapshot.websocketConnections,
+        rooms: snapshot.roomCount,
+        roomParticipants: snapshot.participantCount,
+        readyRooms: snapshot.readyRoomCount,
+      },
+    });
+  });
+
   return app;
 }
 
@@ -414,14 +463,21 @@ export interface SignalingServer {
 }
 
 export function createSignalingServer(): SignalingServer {
-  const app = createHttpApp();
+  const registry = createRoomRegistry();
+  let getWebSocketConnections = () => 0;
+  const app = createHttpApp({
+    getHealthSnapshot: () => ({
+      websocketConnections: getWebSocketConnections(),
+      ...registry.getMetrics(),
+    }),
+  });
   const server = createServer(app);
   const io = new Server<ClientToServerEvents, ServerToClientEvents>(server, {
     cors: {
       origin: "*",
     },
   });
-  const registry = createRoomRegistry();
+  getWebSocketConnections = () => io.engine.clientsCount;
 
   io.on("connection", (socket: Socket<ClientToServerEvents, ServerToClientEvents>) => {
     const userCount = io.engine.clientsCount;
@@ -437,7 +493,8 @@ const isMainModule =
 
 if (isMainModule) {
   const { server } = createSignalingServer();
-  server.listen(3000, () => {
-    console.log("listening on *:3000");
+  const port = process.env.PORT || 3000;
+  server.listen(port, () => {
+    console.log(`listening on *:${port}`);
   });
 }

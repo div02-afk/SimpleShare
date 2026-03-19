@@ -1,5 +1,5 @@
 {
-  "name": "p2p-fileshare-frontend",
+  "name": "simpleshare-web",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -17,12 +17,14 @@
   "dependencies": {
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
+    "@fortawesome/fontawesome-svg-core": "^7.2.0",
     "@fortawesome/free-brands-svg-icons": "^7.2.0",
     "@fortawesome/free-solid-svg-icons": "^7.2.0",
     "@fortawesome/react-fontawesome": "^3.2.0",
     "@mui/material": "^7.3.9",
     "fflate": "^0.8.2",
     "framer-motion": "^12.35.2",
+    "posthog-js": "^1.362.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "react-dropzone": "^15.0.0",

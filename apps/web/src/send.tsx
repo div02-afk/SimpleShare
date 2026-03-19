@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useState } from "react";
 import Dropzone from "react-dropzone";
 import { Link } from "react-router-dom";
+import posthog from "posthog-js";
 import GitHubLink from "./components/githublink";
 import Loader from "./components/loader";
 import ToastNotification from "./components/toastNoti";
@@ -144,6 +145,11 @@ export default function Send() {
       return;
     }
 
+    posthog.capture("send_attempted", {
+      room_id: roomId,
+      file_type: file.type,
+      file_size_bytes: file.size,
+    });
     void session.sendFile(file);
   };
 
