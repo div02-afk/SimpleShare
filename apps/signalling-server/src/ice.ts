@@ -5,13 +5,13 @@ config();
 const API_KEY = process.env.CLOUDFLARE_API_KEY;
 const TOKEN_ID = process.env.CLOUDFLARE_TOKEN_ID;
 
-if (!API_KEY || !TOKEN_ID) {
-  throw new Error(
-    "CLOUDFLARE_API_KEY and CLOUDFLARE_TOKEN_ID must be set in the environment variables."
-  );
-}
-
 export const getIceServers = async (): Promise<RTCIceServer[]> => {
+  if (!API_KEY || !TOKEN_ID) {
+    throw new Error(
+      "CLOUDFLARE_API_KEY and CLOUDFLARE_TOKEN_ID must be set in the environment variables."
+    );
+  }
+
   const response = await fetch(
     `https://rtc.live.cloudflare.com/v1/turn/keys/${TOKEN_ID}/credentials/generate-ice-servers`,
     {

@@ -103,9 +103,9 @@ function createFakeSocket(id = "socket-1") {
 }
 
 async function createHttpTestServer(
-  getIceServers: () => Promise<RTCIceServer[]>
+  dependencies: Parameters<typeof createHttpApp>[0] = {}
 ): Promise<{ close: () => Promise<void>; url: string }> {
-  const app = createHttpApp({ getIceServers });
+  const app = createHttpApp(dependencies);
   const server = createServer(app);
 
   await new Promise<void>((resolve) => {
@@ -154,6 +154,11 @@ test("room registry enforces sender/receiver admission rules", () => {
   assert.deepEqual(registry.join("missing", "receiver", "receiver-3"), {
     accepted: false,
     reason: "sender-not-found",
+  });
+  assert.deepEqual(registry.getMetrics(), {
+    roomCount: 1,
+    participantCount: 2,
+    readyRoomCount: 1,
   });
 });
 
@@ -288,7 +293,9 @@ test("GET /ice-servers returns the raw ICE server array", async () => {
       credential: "credential",
     },
   ];
-  const server = await createHttpTestServer(async () => expectedIceServers);
+  const server = await createHttpTestServer({
+    getIceServers: async () => expectedIceServers,
+  });
 
   try {
     const response = await fetch(`${server.url}/ice-servers`);
@@ -301,8 +308,10 @@ test("GET /ice-servers returns the raw ICE server array", async () => {
 });
 
 test("GET /ice-servers returns 500 when fetching ICE servers fails", async () => {
-  const server = await createHttpTestServer(async () => {
-    throw new Error("boom");
+  const server = await createHttpTestServer({
+    getIceServers: async () => {
+      throw new Error("boom");
+    },
   });
 
   try {
@@ -318,12 +327,53 @@ test("GET /ice-servers returns 500 when fetching ICE servers fails", async () =>
 });
 
 test("GET /turn is no longer supported", async () => {
-  const server = await createHttpTestServer(async () => []);
+  const server = await createHttpTestServer({
+    getIceServers: async () => [],
+  });
 
   try {
     const response = await fetch(`${server.url}/turn`);
 
     assert.equal(response.status, 404);
+  } finally {
+    await server.close();
+  }
+});
+
+test("GET /healthz returns status and basic health metrics", async () => {
+  const server = await createHttpTestServer({
+    getHealthSnapshot: () => ({
+      websocketConnections: 3,
+      roomCount: 2,
+      participantCount: 3,
+      readyRoomCount: 1,
+    }),
+  });
+
+  try {
+    const response = await fetch(`${server.url}/healthz`);
+    const payload = (await response.json()) as {
+      status: string;
+      timestamp: string;
+      uptimeSeconds: number;
+      metrics: {
+        websocketConnections: number;
+        rooms: number;
+        roomParticipants: number;
+        readyRooms: number;
+      };
+    };
+
+    assert.equal(response.status, 200);
+    assert.equal(payload.status, "ok");
+    assert.equal(typeof payload.timestamp, "string");
+    assert.equal(typeof payload.uptimeSeconds, "number");
+    assert.deepEqual(payload.metrics, {
+      websocketConnections: 3,
+      rooms: 2,
+      roomParticipants: 3,
+      readyRooms: 1,
+    });
   } finally {
     await server.close();
   }

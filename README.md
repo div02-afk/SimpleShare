@@ -9,7 +9,7 @@ Welcome to the SimpleShare project! This project provides a secure and efficient
 - **End-to-End Encryption**: Ensures that files are encrypted during transfer, providing high security and privacy.
 - **No Server Storage**: Files are never stored on any server during the transfer, enhancing security and privacy.
 - **File Splitting**: Automatically splits large files into smaller parts to facilitate easier and more reliable transfers.
-- **WebSocket Server**: A server facilitates the initial signaling flow and serves the runtime `GET /ice-servers` WebRTC configuration.
+- **WebSocket Server**: A server facilitates the initial signaling flow, serves the runtime `GET /ice-servers` WebRTC configuration, and exposes `GET /healthz` for platform health checks (including WebSocket/room metrics).
 
 
 ## Contributing
