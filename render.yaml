@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: simpleshare-server
+    env: node
+    # Define how to build the application (install and build just the server package using Turbo)
+    buildCommand: pnpm install && pnpm run build --filter=p2p-fileshare-server
+    # Define how to start the application
+    startCommand: pnpm --filter p2p-fileshare-server start
+    # Ensure Render uses the correct node version
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: "20.19.0"

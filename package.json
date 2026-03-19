@@ -6,7 +6,11 @@
   },
   "scripts": {
     "build": "turbo run build",
+    "build:web": "turbo run build --filter=simpleshare-web",
+    "build:server": "turbo run build --filter=simpleshare-signalling-server",
     "dev": "turbo run dev",
+    "dev:web": "turbo run dev --filter=simpleshare-web",
+    "dev:server": "turbo run dev --filter=simpleshare-signalling-server",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test"
