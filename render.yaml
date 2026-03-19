@@ -13,7 +13,7 @@ services:
     sync: false
   region: singapore
   buildCommand: pnpm install --frozen-lockfile && pnpm build:server
-  startCommand: pnpm --filter p2p-fileshare-server start
+  startCommand: pnpm --filter simpleshare-signalling-server start
   healthCheckPath: /healthz
   autoDeployTrigger: commit
   buildFilter:
