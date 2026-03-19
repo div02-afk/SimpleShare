@@ -1,19 +1,20 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createTransferStoreAdapter } from "../utils/transport/storeAdapter";
 import SenderSession from "../utils/transport/senderSession";
 
 const MAX_SERVER_RETRIES = 5;
 
 export function useSenderSession() {
-  const [session, setSession] = useState<SenderSession | null>(null);
   const [roomId, setRoomId] = useState("");
   const [initError, setInitError] = useState<string | null>(null);
   const [retrySeed, setRetrySeed] = useState(0);
+  const session = useMemo(
+    () => new SenderSession(createTransferStoreAdapter()),
+    [retrySeed]
+  );
 
   useEffect(() => {
-    const nextSession = new SenderSession(createTransferStoreAdapter());
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setSession(nextSession);
+    const currentSession = session;
 
     let cancelled = false;
     let retryTimeout: number | null = null;
@@ -37,7 +38,7 @@ export function useSenderSession() {
 
     const initialize = async () => {
       try {
-        const result = await nextSession.init();
+        const result = await currentSession.init();
         if (!cancelled) {
           setRoomId(result.roomId);
           setInitError(null);
@@ -70,16 +71,15 @@ export function useSenderSession() {
       if (retryTimeout != null) {
         window.clearTimeout(retryTimeout);
       }
-      nextSession.dispose();
+      currentSession.dispose();
     };
-  }, [retrySeed]);
+  }, [session]);
 
   return {
     session,
     roomId,
     initError,
     retry: () => {
-      setSession(null);
       setRoomId("");
       setInitError(null);
       setRetrySeed((value) => value + 1);
