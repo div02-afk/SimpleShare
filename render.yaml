@@ -1,15 +1,24 @@
+# Exported from Render on 2026-03-19T12:16:00Z
+version: "1"
 services:
-  - type: web
-    name: simpleshare-server
-    env: node
-    healthCheckPath: /healthz
-    # Define how to build the application (install and build just the server package using Turbo)
-    buildCommand: pnpm install && pnpm run build:server
-    # Define how to start the application
-    startCommand: pnpm --filter p2p-fileshare-server start
-    # Ensure Render uses the correct node version
-    envVars:
-      - key: NODE_ENV
-        value: production
-      - key: NODE_VERSION
-        value: "20.19.0"
+- type: web
+  name: p2p-fileshare
+  runtime: node
+  repo: https://github.com/div02-afk/SimpleShare
+  plan: free
+  envVars:
+  - key: CLOUDFLARE_TOKEN_ID
+    sync: false
+  - key: CLOUDFLARE_API_KEY
+    sync: false
+  region: singapore
+  buildCommand: pnpm install --frozen-lockfile && pnpm build:server
+  startCommand: pnpm --filter p2p-fileshare-server start
+  healthCheckPath: /healthz
+  autoDeployTrigger: commit
+  buildFilter:
+    paths:
+    - apps/signalling-server
+  previews:
+    generation: automatic
+
